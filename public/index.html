@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnonHub | Anonymous Chat & Collaboration</title>
+    <meta name="description" content="AnonHub is a free anonymous chat and project collaboration platform. Chat, brainstorm, and work together in real time without registration.">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+    <header class="header">
+        <h1 class="logo-text">AnonHub</h1>
+        <nav class="header-links">
+            <a href="/" class="active">Home</a>
+            <a href="/about.html">About</a>
+            <a href="/help.html">Help</a>
+        </nav>
+         <div class="theme-switcher">
+  <button data-theme="modern">Modern</button>
+  <button data-theme="dark">Dark</button>
+  <!-- <button data-theme="glass">Glass</button> -->
+  <!-- <button data-theme="neumorphism">Neo</button> -->
+  <!-- <button data-theme="high-contrast">HC</button> -->
+</div>
+
+    </header>
+
+    <main class="main-container">
+        <div class="left-panel">
+            <div class="panel-section">
+                <h2>Anonymous Collaboration, Simplified</h2>
+                <p>Anonymous Collaboration, Simplified — a seamless way for individuals and teams to work together, share ideas, and exchange knowledge without revealing their identity. It ensures privacy, promotes open communication, and removes barriers so that collaboration becomes effortless, secure, and inclusive for everyone.
+</p>
+            </div>
+            <div class="panel-section">
+                <h3>Collaborate Instantly</h3>
+                <p>Collaborate Instantly — kick off a new project with a unique name and invite others to join you in real time. Whether you’re brainstorming ideas, sharing notes, or tackling group assignments, this platform makes teamwork fast, simple, and effective. No setup hassles, just instant collaboration designed for productivity and creativity.
+</p>
+            </div>
+            <div class="panel-section">
+                <h3>Stay Anonymous</h3>
+                <p>Stay Anonymous — each user is automatically assigned a random name, so your real identity is never revealed. No sign-ups, no personal details required. Simply share the secure link with others and start collaborating instantly, all while keeping your privacy intact.</p>
+            </div>
+        </div>
+
+        <div class="center-panel">
+            <div class="panel-section">
+                <h2>Join a Chat</h2>
+                <form id="chatForm">
+                    <div class="form-group">
+                        <input type="text" id="chatRoomName" class="form-control" placeholder="Enter a room name" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Join Chat Room</button>
+                </form>
+            </div>
+
+            <div class="panel-section">
+                <h2>Start or Open a Project</h2>
+                <form id="projectForm">
+                    <div class="form-group">
+                        <input type="text" id="projectName" class="form-control" placeholder="Enter a new project name" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Create & Go</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p1>&copy; 2025 AnonHub. All rights reserved.</p1>
+    </footer>
+
+    <script>
+    // --- Join Chat Room (No changes needed here) ---
+    document.getElementById('chatForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const roomName = document.getElementById('chatRoomName').value.trim();
+        if (roomName) {
+            window.location.href = `/chat/${encodeURIComponent(roomName)}`;
+        }
+    });
+
+    // --- CORRECTED: Create or Open a Project ---
+    document.getElementById('projectForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const projectName = document.getElementById('projectName').value.trim();
+        if (!projectName) {
+            alert('Please enter a project name.');
+            return;
+        }
+
+        try {
+            // 1. Send the project name to the server to create it
+            const response = await fetch('/create-project', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ name: projectName }),
+            });
+
+            const data = await response.json();
+
+            // 2. If the server responds with a redirect URL, go there
+            if (response.ok && data.redirectUrl) {
+                window.location.href = data.redirectUrl;
+            } else {
+                // If the server sends an error (e.g., project exists), show it
+                alert(`Error: ${data.error || 'Could not create project.'}`);
+            }
+        } catch (error) {
+            // Handle network errors
+            console.error('Failed to create project:', error);
+            alert('A network error occurred. Please try again.');
+        }
+    });
+</script>
+
+<script src="/js/theme.js"></script>
+</body>
+</html>

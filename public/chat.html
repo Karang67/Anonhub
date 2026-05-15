@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AnonHub - Anonymous Chat</title>
+  <meta name="description" content="Join AnonHub's anonymous chat rooms. Collaborate and chat in real-time without registration." />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body class="chat-page">
+  <header class="header">
+    <h1 class="logo-text">AnonHub</h1>
+    <nav class="header-links">
+      <a href="/">Home</a>
+      <a href="/about.html">About</a>
+      <a href="/help.html">Help</a>
+    </nav>
+     <div class="theme-switcher">
+  <button data-theme="modern">Modern</button>
+  <button data-theme="dark">Dark</button>
+  <!-- <button data-theme="glass">Glass</button> -->
+  <!-- <button data-theme="neumorphism">Neo</button> -->
+  <!-- <button data-theme="high-contrast">HC</button> -->
+</div>
+
+  </header>
+
+  <main class="chat-container">
+    <div class="chat-main">
+        <div class="header-bar" id="room-info">Loading Room...</div>
+        <ul class="chat-messages" id="messages"></ul>
+        <div id="typing-indicator" class="typing-indicator"></div>
+        <form class="message-form" id="form">
+          <input class="chat-input" id="input" autocomplete="off" placeholder="Type your message..." aria-label="Type your message" />
+          <button type="submit" aria-label="Send message">Send</button>
+        </form>
+    </div>
+    <aside class="chat-sidebar">
+        <h4>Users in Room</h4>
+        <ul id="user-list" class="user-list"></ul>
+    </aside>
+  </main>
+  <footer class="footer">
+        <p1>&copy; 2025 AnonHub. All rights reserved.</p1>
+    </footer>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const messages = document.getElementById('messages');
+    const typingIndicator = document.getElementById('typing-indicator');
+    const roomInfo = document.getElementById('room-info');
+    const userList = document.getElementById('user-list');
+    let username = '';
+
+    const path = window.location.pathname.split('/');
+    const currentRoom = (path.length > 2 && path[1] === 'chat') ? decodeURIComponent(path[2]) : 'general';
+    roomInfo.textContent = `Room: ${currentRoom}`;
+    socket.emit('join room', currentRoom);
+
+    function appendMessage(data) {
+        const item = document.createElement('li');
+
+        if (data.username === 'System') {
+            item.textContent = data.msg;
+            item.classList.add('system-message');
+        } else {
+            const userSpan = document.createElement('span');
+            userSpan.className = 'username';
+            userSpan.textContent = `${data.username}:`;
+
+            const msgText = document.createTextNode(` ${data.msg}`);
+
+            item.appendChild(userSpan);
+            item.appendChild(msgText);
+            item.classList.add('user-message');
+        }
+        messages.appendChild(item);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    socket.on('set username', (name) => {
+        username = name;
+    });
+
+    socket.on('load messages', (messagesArray) => {
+        messages.innerHTML = '';
+        if (Array.isArray(messagesArray)) {
+            messagesArray.forEach((data) => appendMessage(data));
+        }
+    });
+
+    socket.on('chat message', (data) => {
+        typingIndicator.textContent = '';
+        appendMessage(data);
+    });
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const msg = input.value.trim();
+        if (msg) {
+            socket.emit('room message', { room: currentRoom, msg: msg });
+            input.value = '';
+        }
+    });
+
+    let typingTimeout;
+    input.addEventListener('input', () => {
+        if (input.value) {
+            socket.emit('typing', { room: currentRoom });
+        }
+    });
+
+    let typingClearTimeout;
+    socket.on('typing', (msg) => {
+        typingIndicator.textContent = msg;
+        clearTimeout(typingClearTimeout);
+        typingClearTimeout = setTimeout(() => {
+            typingIndicator.textContent = '';
+        }, 4000);
+    });
+
+    socket.on('room users', (usersArray) => {
+        userList.innerHTML = '';
+        if (Array.isArray(usersArray)) {
+            usersArray.forEach((user) => {
+                const item = document.createElement('li');
+                item.innerHTML = `<span class="status-indicator"></span> ${user.username}`;
+                userList.appendChild(item);
+            });
+        }
+    });
+
+    socket.on('connect_error', () => {
+        appendMessage({ username: 'System', msg: '⚠️ Connection lost. Attempting to reconnect...' });
+    });
+
+    socket.on('connect', () => {
+         appendMessage({ username: 'System', msg: '✅ Reconnected successfully.' });
+    });
+  </script>
+  
+<script src="/js/theme.js"></script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Collaborative Project — AnonHub</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+  </head>
+  <body class="project-page">
+    <header class="header">
+      <h1 class="logo-text">AnonHub</h1>
+      <nav class="header-links">
+        <a href="/">Home</a>
+        <a href="/about.html">About</a>
+        <a href="/help.html">Help</a>
+      </nav>
+      <div class="theme-switcher">
+        <button data-theme="modern">Modern</button>
+        <button data-theme="dark">Dark</button>
+        <!-- <button data-theme="glass">Glass</button> -->
+        <!-- <button data-theme="neumorphism">Neo</button> -->
+        <!-- <button data-theme="high-contrast">HC</button> -->
+      </div>
+    </header>
+
+    <main class="project-editor-wrapper">
+      <div class="collaboration-editor">
+        <h2 id="project-title">Project</h2>
+
+        <div class="whiteboard-controls">
+          <button id="tool-pen">Pen</button>
+          <button id="tool-select">Select</button>
+          <button id="tool-rect">Rect</button>
+          <button id="tool-circle">Circle</button>
+          <label
+            >Brush width:
+            <input id="brush-size" type="range" min="1" max="30" value="3" />
+          </label>
+          <label
+            >Color:
+            <input id="brush-color" type="color" value="#000000" />
+          </label>
+          <button id="clear-whiteboard" title="Clear">Clear</button>
+          <button id="export-whiteboard" title="Export JSON">Export</button>
+        </div>
+
+        <canvas id="whiteboard"></canvas>
+
+        <h3>Project Content (Shared Text)</h3>
+        <textarea
+          id="project-content"
+          placeholder="Start collaborating on your project here..."
+        ></textarea>
+      </div>
+
+      <aside class="project-chat-container">
+        <div class="panel-section">
+          <h4 style="margin-top: 0">Project Chat</h4>
+          <ul id="project-chat-messages" class="chat-messages"></ul>
+          <form id="project-chat-form" class="message-form">
+            <input
+              id="project-chat-input"
+              type="text"
+              autocomplete="off"
+              placeholder="Message..."
+              class="chat-form-control"
+            />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+
+        <div class="panel-section">
+          <h4>Users in Project</h4>
+          <ul id="user-list" class="user-list"></ul>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <p1>&copy; 2025 AnonHub. All rights reserved.</p1>
+    </footer>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      window.addEventListener("load", function () {
+        (function () {
+          const socket = io();
+          const canvasEl = document.getElementById("whiteboard");
+          const projectTitle = document.getElementById("project-title");
+          const textarea = document.getElementById("project-content");
+          const chatForm = document.getElementById("project-chat-form");
+          const chatInput = document.getElementById("project-chat-input");
+          const chatMessages = document.getElementById("project-chat-messages");
+          const userListEl = document.getElementById("user-list");
+          const btnPen = document.getElementById("tool-pen");
+          const btnSelect = document.getElementById("tool-select");
+          const btnRect = document.getElementById("tool-rect");
+          const btnCircle = document.getElementById("tool-circle");
+          const brushSize = document.getElementById("brush-size");
+          const brushColor = document.getElementById("brush-color");
+          const btnClear = document.getElementById("clear-whiteboard");
+          const btnExport = document.getElementById("export-whiteboard");
+          const pathParts = window.location.pathname.split("/");
+          const projectName =
+            pathParts.length > 2 && pathParts[1] === "projects"
+              ? decodeURIComponent(pathParts[2])
+              : null;
+          function escapeHTML(s) {
+            return String(s).replace(
+              /[&<>"']/g,
+              (m) =>
+                ({
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#39;",
+                }[m])
+            );
+          }
+          if (!projectName) {
+            projectTitle.textContent = "Project Not Found";
+            textarea.disabled = true;
+            textarea.placeholder =
+              "This project does not exist or the link is invalid.";
+            chatInput.disabled = true;
+            return;
+          }
+          projectTitle.textContent = `Project: ${projectName}`;
+
+          let canvas;
+
+          function resizeCanvasToContainer() {
+            const container = canvasEl.parentElement;
+            const size = container.clientWidth;
+            canvasEl.width = 800;
+            canvasEl.height = 500;
+            if (canvas) {
+              canvas.setWidth(800);
+              canvas.setHeight(500);
+              canvas.calcOffset();
+              canvas.renderAll();
+            }
+          }
+
+          canvas = new fabric.Canvas("whiteboard", {
+            isDrawingMode: true,
+            backgroundColor: "#ffffff",
+            preserveObjectStacking: true,
+          });
+
+          canvas.freeDrawingBrush.width = parseInt(brushSize.value, 10) || 3;
+          canvas.freeDrawingBrush.color = brushColor.value || "#000";
+
+          setTimeout(() => {
+            resizeCanvasToContainer();
+          }, 100);
+
+          window.addEventListener("resize", resizeCanvasToContainer);
+
+          btnPen.addEventListener("click", () => {
+            canvas.isDrawingMode = true;
+          });
+          btnSelect.addEventListener("click", () => {
+            canvas.isDrawingMode = false;
+          });
+          btnRect.addEventListener("click", () => {
+            canvas.isDrawingMode = false;
+            const rect = new fabric.Rect({
+              left: 50,
+              top: 50,
+              width: 120,
+              height: 80,
+              fill: "transparent",
+              stroke: brushColor.value,
+              strokeWidth: 2,
+            });
+            canvas.add(rect);
+            emitCanvasChange();
+          });
+          btnCircle.addEventListener("click", () => {
+            canvas.isDrawingMode = false;
+            const circle = new fabric.Circle({
+              left: 80,
+              top: 80,
+              radius: 40,
+              fill: "transparent",
+              stroke: brushColor.value,
+              strokeWidth: 2,
+            });
+            canvas.add(circle);
+            emitCanvasChange();
+          });
+          brushSize.addEventListener("input", () => {
+            canvas.freeDrawingBrush.width = parseInt(brushSize.value, 10);
+          });
+          brushColor.addEventListener("input", () => {
+            canvas.freeDrawingBrush.color = brushColor.value;
+          });
+          btnClear.addEventListener("click", () => {
+            if (!confirm("Clear the whiteboard for everyone?")) return;
+            canvas.clear();
+            canvas.backgroundColor = "#ffffff";
+            emitCanvasChange();
+          });
+          btnExport.addEventListener("click", () => {
+            const json = JSON.stringify(canvas.toJSON(["selectable"]));
+            const data = "text/json;charset=utf-8," + encodeURIComponent(json);
+            const a = document.createElement("a");
+            a.href = "data:" + data;
+            a.download = `${projectName}-whiteboard.json`;
+            a.click();
+          });
+          let isApplyingRemote = false;
+          let lastEmit = 0;
+          function emitCanvasChange() {
+            const now = Date.now();
+            if (now - lastEmit < 300) {
+              if (canvas.__emitTimeout) clearTimeout(canvas.__emitTimeout);
+              canvas.__emitTimeout = setTimeout(() => {
+                canvas.__emitTimeout = null;
+                _emitCanvasJSON();
+              }, 300 - (now - lastEmit));
+            } else {
+              _emitCanvasJSON();
+            }
+          }
+          function _emitCanvasJSON() {
+            lastEmit = Date.now();
+            const json = JSON.stringify(canvas.toJSON(["selectable"]));
+            socket.emit("whiteboard update", { projectName, content: json });
+          }
+          canvas.on("path:created", () => {
+            if (!isApplyingRemote) emitCanvasChange();
+          });
+          canvas.on("object:added", () => {
+            if (!isApplyingRemote) emitCanvasChange();
+          });
+          canvas.on("object:modified", () => {
+            if (!isApplyingRemote) emitCanvasChange();
+          });
+          canvas.on("object:removed", () => {
+            if (!isApplyingRemote) emitCanvasChange();
+          });
+          socket.on("whiteboard content", (content) => {
+            try {
+              if (!content) return;
+              isApplyingRemote = true;
+              const parsed = JSON.parse(content);
+              canvas.loadFromJSON(
+                parsed,
+                () => {
+                  canvas.renderAll();
+                  isApplyingRemote = false;
+                },
+                function (o, object) {}
+              );
+            } catch (err) {
+              console.error("Failed to load whiteboard content:", err);
+              isApplyingRemote = false;
+            }
+          });
+          let projectUpdateTimeout = null;
+          textarea.addEventListener("input", () => {
+            if (projectUpdateTimeout) clearTimeout(projectUpdateTimeout);
+            projectUpdateTimeout = setTimeout(() => {
+              socket.emit("project update", {
+                projectName,
+                content: textarea.value,
+              });
+            }, 600);
+          });
+          textarea.addEventListener("blur", () => {
+            if (projectUpdateTimeout) clearTimeout(projectUpdateTimeout);
+            socket.emit("project update", {
+              projectName,
+              content: textarea.value,
+            });
+          });
+          socket.on("project content", (content) => {
+            if (content === undefined || content === null) return;
+            if (textarea.value !== content) {
+              textarea.value = content;
+            }
+          });
+          chatForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const raw = chatInput.value;
+            const msg = raw && raw.trim();
+            if (!msg) return;
+            socket.emit("room message", { room: projectName, msg });
+            chatInput.value = "";
+          });
+          socket.on("load messages", (messagesArray) => {
+            chatMessages.innerHTML = "";
+            if (!Array.isArray(messagesArray)) return;
+            messagesArray.forEach((data) => {
+              addChatMessageToDOM(data.username, data.msg, data.timestamp);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+          socket.on("chat message", (data) => {
+            addChatMessageToDOM(data.username, data.msg, Date.now());
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+          function addChatMessageToDOM(username, message, ts) {
+            const li = document.createElement("li");
+            if (username === "System") {
+              li.innerHTML = `<em>${escapeHTML(message)}</em>`;
+              li.classList.add("system-message");
+            } else {
+              li.innerHTML = `<strong>${escapeHTML(
+                username
+              )}:</strong> ${escapeHTML(message)}`;
+            }
+            chatMessages.appendChild(li);
+          }
+          socket.on("room users", (usersArray) => {
+            userListEl.innerHTML = "";
+            if (!Array.isArray(usersArray)) return;
+            usersArray.forEach((u) => {
+              const li = document.createElement("li");
+              li.innerHTML = `<span class="status-indicator"></span> ${escapeHTML(
+                u.username
+              )}`;
+              userListEl.appendChild(li);
+            });
+          });
+          socket.emit("join project", projectName);
+          window.addEventListener("beforeunload", () => {
+            try {
+              socket.emit("project update", {
+                projectName,
+                content: textarea.value,
+              });
+              const json = JSON.stringify(canvas.toJSON(["selectable"]));
+              socket.emit("whiteboard update", { projectName, content: json });
+            } catch (e) {}
+          });
+        })();
+      });
+    </script>
+
+    <script src="/js/theme.js"></script>
+  </body>
+</html>

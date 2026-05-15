@@ -1,0 +1,20 @@
+{
+  "name": "anonymous-collab-website",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "express": "^5.1.0",
+    "mongoose": "^8.18.1",
+    "socket.io": "^4.8.1",
+    "sqlite3": "^5.1.7",
+    "tldraw": "^4.0.2"
+  }
+}
