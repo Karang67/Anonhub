@@ -1,0 +1,43 @@
+/* =========================================================
+   🏠 HOME PAGE STYLES
+ ========================================================= */
+
+.main-container {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    flex-wrap: wrap;
+    padding: 40px;
+}
+
+.left-panel,
+.center-panel {
+    flex: 1;
+    min-width: 320px;
+}
+
+.center-panel {
+    max-width: 450px;
+}
+
+/* =========================================================
+   📱 RESPONSIVE MEDIA QUERIES
+ ========================================================= */
+
+@media (max-width: 768px) {
+    .main-container {
+        padding: 24px 16px;
+        gap: 24px;
+    }
+
+    .left-panel,
+    .center-panel {
+        min-width: 100%;
+        max-width: 100%;
+    }
+
+    .panel-section {
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+}

@@ -4,11 +4,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Collaborative Project — AnonHub</title>
+  <title>Collaborative Coding Board — AnonHub</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/project.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tinymce@6.8.2/tinymce.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 </head>
 
@@ -20,7 +18,7 @@
       <a href="/about.html">About</a>
       <a href="/help.html">Help</a>
       <a href="/document.html">Document Board</a>
-      <a href="/code.html">Coding Board</a>
+      <a href="/code.html" class="active">Coding Board</a>
     </nav>
     <div class="header-actions">
       <button id="theme-toggle" class="theme-toggle-btn" title="Toggle Theme">🌙 Dark Mode</button>
@@ -35,48 +33,13 @@
     <div class="collaboration-editor">
       <div class="workspace-header-bar">
         <div class="workspace-title-area">
-          <h2 id="project-title">Project</h2>
-        </div>
-        <div class="workspace-tabs">
-          <button id="tab-sketch" class="tab-btn active">
-            <span>🎨</span> Sketch Board
-          </button>
-          <button id="tab-document" class="tab-btn">
-            <span>📝</span> Document Board
-          </button>
-          <button id="tab-code" class="tab-btn">
-            <span>💻</span> Coding Board
-          </button>
+          <h2 id="project-title">Coding Board</h2>
         </div>
       </div>
 
       <div class="workspace-panes">
-        <!-- 🎨 Sketch Board Pane -->
-        <div id="pane-sketch" class="workspace-pane active">
-          <div class="whiteboard-controls">
-            <button id="tool-pen">✏️ Pen</button>
-            <button id="tool-select">🖐️ Select</button>
-            <button id="tool-rect">🟩 Rect</button>
-            <button id="tool-circle">⭕ Circle</button>
-            <label>Brush width:
-              <input id="brush-size" type="range" min="1" max="30" value="3" />
-            </label>
-            <label>Color:
-              <input id="brush-color" type="color" value="#A93F55" />
-            </label>
-            <button id="clear-whiteboard" title="Clear">🧹 Clear</button>
-            <button id="export-whiteboard" title="Export JSON">💾 Export</button>
-          </div>
-          <canvas id="whiteboard"></canvas>
-        </div>
-
-        <!-- 📝 Document Board (TinyMCE) Pane -->
-        <div id="pane-document" class="workspace-pane">
-          <textarea id="project-content" placeholder="Start collaborating on your rich-text project here..."></textarea>
-        </div>
-
         <!-- 💻 Coding Board (Monaco / VS Code style) Pane -->
-        <div id="pane-code" class="workspace-pane">
+        <div id="pane-code" class="workspace-pane active">
           <div class="code-controls">
             <label>Language:
               <select id="code-language">
@@ -121,19 +84,52 @@
     <p1>&copy; 2025 AnonHub. All rights reserved.</p1>
   </footer>
 
-  <script>
-    // Temporarily hide define to prevent AMD collision with Monaco Editor loader
-    window._tempDefine = window.define;
-    window.define = undefined;
-  </script>
-  <script src="/js/connection-helper.js"></script>
-  <script>
-    // Restore define for Monaco Editor
-    window.define = window._tempDefine;
-    delete window._tempDefine;
-  </script>
-  <script src="/js/project.js"></script>
+  <!-- Join Room Overlay Modal -->
+  <div id="room-join-overlay" class="room-overlay" style="display: none;">
+    <div class="room-overlay-content">
+      <h2>Collaborative Coding Board</h2>
+      <p>Enter a room name to join or create a shared coding session.</p>
+      <form id="overlay-join-form">
+        <input type="text" id="overlay-room-name" placeholder="Enter room name..." required autocomplete="off" />
+        <button type="submit">Collaborate</button>
+        <button type="button" onclick="window.location.href='/'" class="btn-secondary-modal">Back to Home</button>
+      </form>
+    </div>
+  </div>
 
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomOverlay = document.getElementById("room-join-overlay");
+      const joinForm = document.getElementById("overlay-join-form");
+      const roomInput = document.getElementById("overlay-room-name");
+
+      const roomName = urlParams.get("project");
+      if (roomName) {
+        // Background call to make sure project exists in DB
+        fetch('/create-project', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: roomName })
+        }).catch(err => console.error("Error creating/ensuring project:", err));
+      } else {
+        // Show overlay if no project is in the URL
+        roomOverlay.style.display = "flex";
+        
+        joinForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const name = roomInput.value.trim();
+          if (name) {
+            // Redirect to URL with query param to trigger project.js loading
+            window.location.href = window.location.pathname + "?project=" + encodeURIComponent(name);
+          }
+        });
+      }
+    });
+  </script>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/project.js"></script>
   <script src="/js/theme.js"></script>
 </body>
 

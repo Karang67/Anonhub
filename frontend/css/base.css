@@ -1,0 +1,445 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+/* =========================================================
+   THEME DEFINITIONS
+   These allow dynamic themes using data-theme=""
+ ========================================================= */
+
+html[data-theme="modern"] {
+    --primary-color: #A93F55;
+    --secondary-color: #61A5C2;
+    --dark-color: #2E4052;
+    --light-color: #F8F4F0;
+    --card-background: #FFFFFF;
+    --border-color: #e0e0e0;
+    --text-color: #2E4052;
+}
+
+/* 🌙 DARK THEME */
+html[data-theme="dark"] {
+    --primary-color: #FF8FA3;
+    --secondary-color: #6BC7FF;
+    --light-color: #0F1720;
+    --card-background: #152231;
+    --text-color: #E6EEF6;
+    --border-color: #223344;
+}
+
+/* 🪟 GLASS THEME */
+html[data-theme="glass"] {
+    --primary-color: #8F6BBF;
+    --secondary-color: #61A5C2;
+    --light-color: rgba(255, 255, 255, 0.4);
+    --card-background: rgba(255, 255, 255, 0.3);
+    --text-color: #213144;
+    --border-color: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(14px);
+}
+
+/* 💎 NEUMORPHISM */
+html[data-theme="neumorphism"] {
+    --primary-color: #869ea8;
+    --secondary-color: #91b4d1;
+    --light-color: #E6EEF0;
+    --card-background: #E6EEF0;
+    --text-color: #2B3B3F;
+    --border-color: #d0d8da;
+}
+
+/* ⚡ HIGH-CONTRAST */
+html[data-theme="high-contrast"] {
+    --primary-color: #0B5CFF;
+    --secondary-color: #FF5C00;
+    --light-color: #FFFFFF;
+    --card-background: #FFFFFF;
+    --text-color: #000000;
+    --border-color: #000000;
+}
+
+/* ---------- COLOR VARIABLES ---------- */
+:root {
+    --primary-color: #A93F55;
+    --secondary-color: #61A5C2;
+    --dark-color: #2E4052;
+    --light-color: #F8F4F0;
+    --card-background: #FFFFFF;
+    --border-color: #e0e0e0;
+    --text-color: #2E4052;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --transition: all 0.3s ease;
+}
+
+/* ---------- RESET ---------- */
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--light-color);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- HEADER ---------- */
+.header {
+    background: var(--dark-color);
+    color: white;
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    z-index: 10;
+}
+
+.logo-text {
+    font-size: 2rem;
+    font-weight: bold;
+    letter-spacing: -.5px;
+    margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.menu-toggle-btn {
+    display: none; /* Hidden on desktop */
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.menu-toggle-btn:hover {
+    color: var(--secondary-color);
+}
+
+/* ---------- NAVIGATION ---------- */
+.header-links {
+    display: flex;
+    gap: 24px;
+}
+
+.header-links a {
+    color: white;
+    text-decoration: none;
+    font-size: 1.05rem;
+    padding-bottom: 4px;
+    transition: var(--transition);
+}
+
+.header-links a:hover,
+.header-links a.active {
+    color: var(--secondary-color);
+    border-bottom: 2px solid var(--secondary-color);
+}
+
+/* ---------- HEADINGS ---------- */
+h2 {
+    font-size: 1.9rem;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+h3 {
+    font-size: 1.35rem;
+    margin-bottom: 10px;
+}
+
+/* ---------- FORMS ---------- */
+input, select, textarea {
+    background: var(--card-background);
+    color: var(--text-color);
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-control {
+    width: 92%;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    font-size: 1rem;
+    transition: .25s ease;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    outline: 3px solid rgba(169, 63, 85, .15);
+}
+
+/* ---------- BUTTONS ---------- */
+.btn-primary {
+    padding: 14px;
+    width: 100%;
+    background: var(--primary-color);
+    border: none;
+    color: white;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-primary:hover {
+    background: #8c3245;
+}
+
+/* ---------- PANELS / CARDS ---------- */
+.panel-section,
+.help-panel-section {
+    background: var(--card-background);
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+    transition: var(--transition);
+}
+
+.panel-section:hover,
+.help-panel-section:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- FOOTER ---------- */
+.footer {
+    background: var(--dark-color);
+    color: var(--light-color);
+    text-align: center;
+    padding: 20px;
+    margin-top: auto;
+}
+
+/* =========================================================
+   THEME SWITCHER BUTTONS
+ ========================================================= */
+.theme-toggle-btn {
+    padding: 8px 16px;
+    background: var(--card-background);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: var(--shadow);
+}
+
+.theme-toggle-btn:hover {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+    color: white;
+    transform: translateY(-1px);
+}
+
+/* =========================================================
+   🪟 ROOM JOIN OVERLAY MODAL
+ ========================================================= */
+.room-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 32, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+html[data-theme="dark"] .room-overlay {
+    background: rgba(10, 15, 22, 0.7);
+}
+
+.room-overlay-content {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    padding: 40px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    text-align: center;
+    animation: overlayFadeIn 0.4s ease-out;
+}
+
+html[data-theme="dark"] .room-overlay-content {
+    background: rgba(21, 34, 49, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #E6EEF6;
+}
+
+.room-overlay-content h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--primary-color);
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.room-overlay-content p {
+    margin-bottom: 24px;
+    font-size: 1rem;
+    opacity: 0.9;
+    line-height: 1.5;
+}
+
+.room-overlay-content form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.room-overlay-content input {
+    width: 100%;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    font-size: 1rem;
+    box-sizing: border-box;
+    background: var(--card-background);
+    color: var(--text-color);
+    transition: border-color 0.25s, outline 0.25s;
+}
+
+.room-overlay-content input:focus {
+    border-color: var(--primary-color);
+    outline: 3px solid rgba(169, 63, 85, .15);
+}
+
+.room-overlay-content button {
+    padding: 14px;
+    width: 100%;
+    background: var(--primary-color);
+    border: none;
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.room-overlay-content button:hover {
+    background: #8c3245;
+    transform: translateY(-1px);
+}
+
+.btn-secondary-modal {
+    padding: 14px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    box-sizing: border-box;
+}
+
+.btn-secondary-modal:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme="dark"] .btn-secondary-modal:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.room-overlay-content button:active {
+    transform: translateY(0);
+}
+
+@keyframes overlayFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* =========================================================
+   📱 RESPONSIVE BASE STYLES
+ ========================================================= */
+@media (max-width: 768px) {
+    .header {
+        position: relative;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 12px 24px;
+        align-items: center;
+    }
+
+    .header-links {
+        display: none; /* Hide default navbar links on mobile */
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--dark-color);
+        flex-direction: column;
+        gap: 0;
+        padding: 8px 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 1000;
+    }
+
+    .header-links.show {
+        display: flex; /* Show when toggled via JS */
+    }
+
+    .header-links a {
+        color: white;
+        padding: 14px 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 1rem;
+        text-align: left;
+    }
+
+    .header-links a:last-child {
+        border-bottom: none;
+    }
+
+    .header-links a:hover,
+    .header-links a.active {
+        background: rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: var(--secondary-color);
+    }
+
+    .menu-toggle-btn {
+        display: inline-flex; /* Show hamburger button on mobile */
+    }
+}
