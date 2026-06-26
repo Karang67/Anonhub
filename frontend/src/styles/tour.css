@@ -1,0 +1,249 @@
+/* =========================================================
+   🎓 INTERACTIVE TOUR ONBOARDING WIDGET
+   ========================================================= */
+
+.workspace-tour-trigger-btn {
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: rgba(97, 165, 194, 0.12);
+  color: var(--secondary-color);
+  border: 1px solid rgba(97, 165, 194, 0.3);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+
+.workspace-tour-trigger-btn:hover {
+  background: var(--secondary-color);
+  color: white;
+  box-shadow: 0 0 10px rgba(97, 165, 194, 0.3);
+}
+
+.tour-tooltip-card {
+  position: fixed;
+  width: 330px;
+  background: rgba(30, 41, 59, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid var(--primary-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), 0 0 15px var(--accent-glow);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: white;
+  animation: overlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+html[data-theme="dark"] .tour-tooltip-card {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.tour-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+}
+
+.tour-tooltip-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--primary-color);
+}
+
+.tour-tooltip-badge {
+  font-size: 0.7rem;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.tour-tooltip-body p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+}
+
+.tour-tooltip-body strong {
+  color: var(--secondary-color);
+}
+
+.tour-tooltip-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.tour-skip-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #94a3b8;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tour-skip-btn:hover {
+  border-color: white;
+  color: white;
+}
+
+.tour-next-btn {
+  background: var(--primary-color);
+  border: none;
+  color: white;
+  padding: 6px 18px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 2px 8px rgba(169, 63, 85, 0.3);
+}
+
+.tour-next-btn:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 4px 12px rgba(169, 63, 85, 0.5);
+  transform: translateY(-1px);
+}
+
+/* --- Absolute Tooltip Positions (Desktop Viewports) --- */
+
+/* Landing Page steps */
+.tour-tooltip-card.home-step-0 {
+  top: 20vh;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.home-step-1 {
+  bottom: 120px;
+  left: 15%;
+}
+
+.tour-tooltip-card.home-step-2 {
+  bottom: 120px;
+  right: 15%;
+}
+
+.tour-tooltip-card.home-step-3 {
+  bottom: 90px;
+  right: 24px;
+}
+
+.tour-tooltip-card.home-step-4 {
+  top: 90px;
+  right: 24px;
+}
+
+/* Project Room steps */
+.tour-tooltip-card.proj-step-0 {
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.proj-step-1 {
+  top: 110px;
+  right: 40px;
+}
+
+.tour-tooltip-card.proj-step-2 {
+  top: 180px;
+  left: 40px;
+}
+
+.tour-tooltip-card.proj-step-3 {
+  top: 250px;
+  left: 40px;
+}
+
+.tour-tooltip-card.proj-step-4 {
+  top: 180px;
+  left: 40px;
+}
+
+.tour-tooltip-card.proj-step-5 {
+  top: 200px;
+  right: 360px;
+}
+
+.tour-tooltip-card.proj-step-6 {
+  bottom: 90px;
+  right: 24px;
+}
+
+.tour-tooltip-card.doc-standalone-0 {
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.code-standalone-0 {
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+
+/* Chat Room steps */
+.tour-tooltip-card.chat-step-0 {
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.chat-step-1 {
+  top: 250px;
+  left: 120px;
+}
+
+.tour-tooltip-card.chat-step-2 {
+  bottom: 90px;
+  left: 120px;
+}
+
+.tour-tooltip-card.chat-step-3 {
+  top: 250px;
+  right: 320px;
+}
+
+/* --- Mobile Viewport Tooltip Overrides --- */
+@media (max-width: 1024px) {
+  .tour-tooltip-card.proj-step-5 {
+    top: auto;
+    bottom: 90px;
+    right: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .tour-tooltip-card {
+    position: fixed !important;
+    bottom: 24px !important;
+    left: 20px !important;
+    right: 20px !important;
+    top: auto !important;
+    width: auto !important;
+    transform: none !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+  }
+}
+

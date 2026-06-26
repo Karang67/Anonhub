@@ -1,0 +1,124 @@
+/* EmojiReactionPicker.css */
+
+.reaction-wrapper {
+  position: relative;
+  margin-top: 4px;
+}
+
+/* Trigger button (only shown when no reactions exist) */
+.reaction-trigger {
+  opacity: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: opacity 0.15s ease;
+  line-height: 1.4;
+}
+
+/* Show trigger on message bubble hover */
+.message-bubble:hover .reaction-trigger {
+  opacity: 1;
+}
+
+/* Reaction badge row */
+.reaction-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  border: 1.5px solid var(--border-color);
+  background: var(--light-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+}
+
+.reaction-badge:hover {
+  border-color: var(--primary-color);
+  background: var(--accent-glow);
+}
+
+.reaction-badge.mine {
+  border-color: var(--primary-color);
+  background: var(--accent-glow);
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.reaction-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.reaction-badge.mine .reaction-count {
+  color: var(--primary-color);
+}
+
+.reaction-add-more {
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  border: 1.5px dashed var(--border-color);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  line-height: 1.4;
+}
+
+.reaction-add-more:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* Floating emoji picker strip */
+.emoji-picker-strip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  background: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 6px 10px;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  animation: popIn 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  white-space: nowrap;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.emoji-option {
+  background: transparent;
+  border: none;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  transition: transform 0.1s ease, background 0.1s ease;
+  line-height: 1;
+}
+
+.emoji-option:hover {
+  transform: scale(1.3);
+  background: var(--light-color);
+}

@@ -1,0 +1,419 @@
+@import './styles/tour.css';
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+/* =========================================================
+   DESIGN TOKENS & SYSTEM VARIABLES
+   ========================================================= */
+:root {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Original / Light Mode Defaults */
+  --primary-color: #A93F55;
+  /* Original Burgundy */
+  --primary-hover: #8c3245;
+  --secondary-color: #61A5C2;
+  /* Original Light Blue */
+  --secondary-hover: #4e8ea7;
+  --dark-color: #1e293b;
+  --light-color: #f8fafc;
+  --card-background: #ffffff;
+  --border-color: #e2e8f0;
+  --text-color: #334155;
+  --text-muted: #64748b;
+  --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  --accent-glow: rgba(169, 63, 85, 0.15);
+
+  /* Original Neon Accent Colors */
+  --neon-primary: #A93F55;
+  --neon-secondary: #ff8fa3;
+  --neon-cyan: #61A5C2;
+  --neon-purple: #a855f7;
+  --neon-green: #10b981;
+
+  --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 10px 15px -3px rgba(169, 63, 85, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 20px 25px -5px rgba(169, 63, 85, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 20px rgba(169, 63, 85, 0.2);
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --header-height: 70px;
+}
+
+/* Dark Theme Overrides */
+html[data-theme="dark"] {
+  --primary-color: #ff8fa3;
+  /* Bright Original Pink/Rose */
+  --primary-hover: #ffa3b5;
+  --secondary-color: #6bc7ff;
+  /* Bright Original Blue */
+  --secondary-hover: #8cd3ff;
+  --dark-color: #0f172a;
+  --light-color: #0b0f19;
+  --card-background: #1e293b;
+  --border-color: #334155;
+  --text-color: #f1f5f9;
+  --text-muted: #94a3b8;
+  --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+  --accent-glow: rgba(255, 143, 163, 0.15);
+  --shadow-glow: 0 0 25px rgba(255, 143, 163, 0.25), 0 0 10px rgba(107, 199, 255, 0.15);
+
+  /* Dark Neon Colors */
+  --neon-primary: #ff8fa3;
+  --neon-secondary: #A93F55;
+  --neon-cyan: #6bc7ff;
+  --neon-purple: #c084fc;
+  --neon-green: #34d399;
+}
+
+/* Dracula Theme Overrides */
+html[data-theme="dracula"] {
+  --primary-color: #bd93f9;
+  --primary-hover: #ff79c6;
+  --secondary-color: #50fa7b;
+  --secondary-hover: #8be9fd;
+  --dark-color: #282a36;
+  --light-color: #1e1f29;
+  --card-background: #282a36;
+  --border-color: #44475a;
+  --text-color: #f8f8f2;
+  --text-muted: #6272a4;
+  --bg-gradient: linear-gradient(135deg, #1e1f29 0%, #282a36 100%);
+  --accent-glow: rgba(189, 147, 249, 0.15);
+  --shadow-glow: 0 0 20px rgba(189, 147, 249, 0.25);
+}
+
+/* Cyberpunk Theme Overrides */
+html[data-theme="cyberpunk"] {
+  --primary-color: #00ffcc;
+  --primary-hover: #ff0055;
+  --secondary-color: #ffe600;
+  --secondary-hover: #00ffcc;
+  --dark-color: #1a1a1a;
+  --light-color: #0d0d0d;
+  --card-background: #111111;
+  --border-color: #ff0055;
+  --text-color: #00ffcc;
+  --text-muted: #888888;
+  --bg-gradient: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%);
+  --accent-glow: rgba(0, 255, 204, 0.2);
+  --shadow-glow: 0 0 15px rgba(0, 255, 204, 0.3);
+}
+
+/* Ocean Theme Overrides */
+html[data-theme="ocean"] {
+  --primary-color: #0ea5e9;
+  --primary-hover: #38bdf8;
+  --secondary-color: #0d9488;
+  --secondary-hover: #14b8a6;
+  --dark-color: #0f172a;
+  --light-color: #080e1a;
+  --card-background: #1e293b;
+  --border-color: #38bdf8;
+  --text-color: #f0fdfa;
+  --text-muted: #64748b;
+  --bg-gradient: linear-gradient(135deg, #080e1a 0%, #0f172a 100%);
+  --accent-glow: rgba(14, 165, 233, 0.15);
+  --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.2);
+}
+
+/* Midnight Theme Overrides */
+html[data-theme="midnight"] {
+  --primary-color: #fafafa;
+  --primary-hover: #a1a1aa;
+  --secondary-color: #3f3f46;
+  --secondary-hover: #52525b;
+  --dark-color: #09090b;
+  --light-color: #000000;
+  --card-background: #09090b;
+  --border-color: #27272a;
+  --text-color: #ffffff;
+  --text-muted: #71717a;
+  --bg-gradient: linear-gradient(135deg, #000000 0%, #09090b 100%);
+  --accent-glow: rgba(250, 250, 250, 0.08);
+  --shadow-glow: 0 0 10px rgba(250, 250, 250, 0.1);
+}
+
+/* =========================================================
+   BASE RESET & LAYOUT
+   ========================================================= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--light-color);
+  background-image: var(--bg-gradient);
+  color: var(--text-color);
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+  opacity: 0.6;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+}
+
+/* =========================================================
+   PAGES COMMON & CONTAINERS
+   ========================================================= */
+.main-container {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 24px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+.page-container {
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.title-center {
+  text-align: center;
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 40px;
+  background: linear-gradient(135deg, var(--text-color) 0%, var(--primary-color) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Card Section */
+.panel-section {
+  background: var(--card-background);
+  padding: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 24px;
+  transition: var(--transition);
+  backdrop-filter: blur(4px);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--neon-primary), var(--neon-cyan), var(--neon-secondary));
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.panel-section:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  border-color: var(--primary-color);
+}
+
+.panel-section:hover::before {
+  opacity: 1;
+}
+
+.panel-section h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.panel-section h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-section p {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* =========================================================
+   FORMS & INPUTS & BUTTONS
+   ========================================================= */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.form-control {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border-color);
+  font-size: 1rem;
+  font-family: var(--font-sans);
+  background: var(--light-color);
+  color: var(--text-color);
+  transition: var(--transition);
+}
+
+.form-control:focus {
+  border-color: var(--neon-primary);
+  outline: none;
+  box-shadow: 0 0 0 4px var(--accent-glow), 0 0 10px rgba(99, 102, 241, 0.15);
+  background: var(--card-background);
+  transform: scale(1.005);
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-hover) 100%);
+  color: white;
+  border: none;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary-color) 100%);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45), 0 0 12px var(--neon-primary);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* =========================================================
+   SYSTEM BANNER / NOTIFICATIONS
+   ========================================================= */
+.system-notifications {
+  margin-top: 20px;
+}
+
+.notification-error,
+.notification-warning,
+.notification-info {
+  animation: slideInDown 0.3s ease-out;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+.footer {
+  background: rgba(30, 41, 59, 0.95);
+  color: #94a3b8;
+  text-align: center;
+  padding: 20px;
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.9rem;
+}
+
+html[data-theme="dark"] .footer {
+  background: rgba(15, 23, 42, 0.95);
+  border-top: 1px solid var(--border-color);
+}
+
+.mobile-only-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-only-btn {
+    display: inline-flex;
+    padding: 6px 12px;
+    background: var(--light-color);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    align-items: center;
+    white-space: nowrap;
+  }
+}
+
+/* Override header-height on very small screens to match shrunken navbar */
+@media (max-width: 400px) {
+  :root {
+    --header-height: 56px;
+  }
+}
+
+/* Global overflow safety net */
+#root {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+}

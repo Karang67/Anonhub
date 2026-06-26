@@ -1,0 +1,41 @@
+{
+  "name": "AnonHub - Anonymous Collaboration",
+  "short_name": "AnonHub",
+  "description": "Real-time anonymous collaboration platform for chats, projects, documents, and code.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#A93F55",
+  "background_color": "#0f0f13",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Chat Room",
+      "short_name": "Chat",
+      "description": "Join or create a chat room",
+      "url": "/?focus=chat",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "New Project",
+      "short_name": "Project",
+      "description": "Start or open a project workspace",
+      "url": "/?focus=project",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

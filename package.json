@@ -4,16 +4,26 @@
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
+    "dev": "node backend/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Anonymous collaborative workspace with real-time editing, chat, whiteboard, and code execution.",
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3",
     "body-parser": "^2.2.0",
+    "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.0.0",
+    "isomorphic-dompurify": "^2.25.0",
     "mongoose": "^8.18.1",
+    "multer": "^1.4.5-lts.1",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "tldraw": "^4.0.2"

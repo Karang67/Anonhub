@@ -1,0 +1,57 @@
+/* =========================================================
+   ABOUT / HELP PAGE SPECIFICS (About.css)
+   ========================================================= */
+.faq-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.faq-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-background);
+  overflow: hidden;
+  transition: var(--transition);
+}
+
+.faq-header {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1.1rem;
+  user-select: none;
+  background: rgba(0, 0, 0, 0.01);
+  transition: var(--transition);
+}
+
+.faq-header:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--primary-color);
+}
+
+.faq-content {
+  padding: 0 24px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.faq-item.active .faq-content {
+  padding: 16px 24px 24px 24px;
+  max-height: 300px;
+  border-top: 1px solid var(--border-color);
+}
+
+.faq-icon {
+  transition: transform 0.3s ease;
+}
+
+.faq-item.active .faq-icon {
+  transform: rotate(180deg);
+}
