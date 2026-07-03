@@ -10,16 +10,15 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock } from 'lucide-react';
+import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut } from 'lucide-react';
 import { Canvas, Rect, Circle, PencilBrush, Triangle, Line } from 'fabric';
 import { Editor as TinyMCEEditor } from '@tinymce/tinymce-react';
 import Editor from '@monaco-editor/react';
 import QRCode from 'qrcode';
 
-import { initSocket } from '../services/socket';
+import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import AccessKeyModal from '../components/AccessKeyModal';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
-import AIChatBot from '../components/AIChatBot';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
 import './ProjectRoom.css';
 
@@ -336,8 +335,10 @@ export default function ProjectRoom() {
     if (!projectName) return;
     if (activeTab === 'document') {
       sessionStorage.setItem('anonhub-active-document-room', projectName);
+      setCookie('anonhub-active-document-room', projectName);
     } else if (activeTab === 'code') {
       sessionStorage.setItem('anonhub-active-code-room', projectName);
+      setCookie('anonhub-active-code-room', projectName);
     }
   }, [projectName, activeTab]);
 
@@ -541,13 +542,13 @@ export default function ProjectRoom() {
     });
 
     socket.on('connect', () => {
-      const currentKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || '';
+      const currentKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || getCookie(`accesskey_project_${projectName}`) || '';
       const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
       socket.emit('join project', { projectName, accessKey: currentKey, ownerToken: savedOwnerToken });
     });
 
     // Now emit the initial join project event that all listeners are bound
-    const savedKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || '';
+    const savedKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || getCookie(`accesskey_project_${projectName}`) || '';
     const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
     socket.emit('join project', { projectName, accessKey: savedKey, ownerToken: savedOwnerToken });
 
@@ -587,10 +588,15 @@ export default function ProjectRoom() {
   const handleLeaveRoom = () => {
     if (standaloneMode) {
       sessionStorage.removeItem(`anonhub-active-${activeTab}-room`);
+      deleteCookie(`anonhub-active-${activeTab}-room`);
+      deleteCookie(`accesskey_project_${projectName}`);
       navigate(`/${activeTab}`);
     } else {
       sessionStorage.removeItem('anonhub-active-document-room');
       sessionStorage.removeItem('anonhub-active-code-room');
+      deleteCookie('anonhub-active-document-room');
+      deleteCookie('anonhub-active-code-room');
+      deleteCookie(`accesskey_project_${projectName}`);
       navigate('/');
     }
   };
@@ -1151,6 +1157,7 @@ export default function ProjectRoom() {
       const data = await res.json();
       if (res.ok) {
         sessionStorage.setItem(`accesskey_project_${projectName}`, trimmed);
+        setCookie(`accesskey_project_${projectName}`, trimmed);
         setShowChangeKeyModal(false);
         setNewKeyInput('');
         alert('✅ Access key updated! Share the new key with your collaborators.');
@@ -1172,6 +1179,7 @@ export default function ProjectRoom() {
   // --- Gating overlay inputs handler ---
   const handleOverlayJoinSubmit = (room, key) => {
     sessionStorage.setItem(`accesskey_project_${projectName}`, key);
+    setCookie(`accesskey_project_${projectName}`, key);
     if (socketRef.current) {
       const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
       socketRef.current.emit('join project', {
@@ -1619,14 +1627,15 @@ export default function ProjectRoom() {
                   title="Share invite link"
                   style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  <Link size={13} /> Share
+                  <Link size={13} /> <span className="btn-text">Share</span>
                 </button>
                 <button
                   onClick={() => setTourStep(0)}
                   className="workspace-tour-trigger-btn"
                   title="Start Room Tour"
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  ❓ Tour Guide
+                  <HelpCircle size={13} /> <span className="btn-text">Tour Guide</span>
                 </button>
                 <button
                   onClick={handleLeaveRoom}
@@ -1634,7 +1643,7 @@ export default function ProjectRoom() {
                   title={standaloneMode ? "Leave this board session" : "Leave this project workspace"}
                   style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#e05252', color: 'white' }}
                 >
-                  🚪 {standaloneMode ? "Leave Board" : "Leave Workspace"}
+                  <LogOut size={13} /> <span className="btn-text">{standaloneMode ? "Leave Board" : "Leave Workspace"}</span>
                 </button>
               </div>
             </div>
@@ -1984,18 +1993,20 @@ export default function ProjectRoom() {
                               download={file.name}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="attachment-action-btn"
+                              className="attachment-action-btn download-btn"
                               title="Download File"
                             >
                               <Download size={14} />
+                              <span className="attachment-btn-text">Download</span>
                             </a>
                             {isOwner && (
                               <button
                                 onClick={() => setDeleteConfirmFile(file)}
-                                className="attachment-action-btn delete"
+                                className="attachment-action-btn delete-btn"
                                 title="Delete File"
                               >
                                 <Trash2 size={14} />
+                                <span className="attachment-btn-text">Delete</span>
                               </button>
                             )}
                           </div>
@@ -2816,8 +2827,6 @@ export default function ProjectRoom() {
         <MessageSquare size={20} />
       </button>
 
-      {/* AI Chat Copilot Widget */}
-      <AIChatBot />
     </div>
   );
 }

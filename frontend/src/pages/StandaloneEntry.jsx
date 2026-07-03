@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AccessKeyModal from '../components/AccessKeyModal';
+import { getCookie, setCookie } from '../services/socket';
 
 /**
  * StandaloneEntry Component
@@ -20,51 +21,77 @@ export default function StandaloneEntry({ tabType }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [errorMessage, setErrorMessage] = useState('');
-
-  // Extract query parameters representing project names (e.g. `?project=test-doc`)
+  
   const queryProject = searchParams.get('project');
 
-  // If a project identifier was parsed directly from the browser location,
-  // or if there is an active session in the current browser session,
-  // execute an immediate client-side redirection to the targeted multi-pane workspace route.
   useEffect(() => {
     if (queryProject) {
-      navigate(`/projects/${encodeURIComponent(queryProject)}?tab=${tabType}`, { replace: true });
+      if (tabType === 'chat') {
+        navigate(`/chat/${encodeURIComponent(queryProject)}`, { replace: true });
+      } else if (tabType === 'call') {
+        navigate(`/call/${encodeURIComponent(queryProject)}`, { replace: true });
+      } else if (tabType === 'project') {
+        navigate(`/projects/${encodeURIComponent(queryProject)}`, { replace: true });
+      } else {
+        navigate(`/projects/${encodeURIComponent(queryProject)}?tab=${tabType}`, { replace: true });
+      }
     } else {
-      const activeRoom = sessionStorage.getItem(`anonhub-active-${tabType}-room`);
+      const activeRoom = sessionStorage.getItem(`anonhub-active-${tabType}-room`) || getCookie(`anonhub-active-${tabType}-room`);
       if (activeRoom) {
-        const savedKey = sessionStorage.getItem(`accesskey_project_${activeRoom}`);
+        const keyPrefix = tabType === 'chat' ? 'chat' : 'project';
+        const savedKey = sessionStorage.getItem(`accesskey_${keyPrefix}_${activeRoom}`) || getCookie(`accesskey_${keyPrefix}_${activeRoom}`);
         if (savedKey) {
-          navigate(`/projects/${encodeURIComponent(activeRoom)}?tab=${tabType}`, { replace: true });
+          if (tabType === 'chat') {
+            navigate(`/chat/${encodeURIComponent(activeRoom)}`, { replace: true });
+          } else if (tabType === 'call') {
+            navigate(`/call/${encodeURIComponent(activeRoom)}`, { replace: true });
+          } else if (tabType === 'project') {
+            navigate(`/projects/${encodeURIComponent(activeRoom)}`, { replace: true });
+          } else {
+            navigate(`/projects/${encodeURIComponent(activeRoom)}?tab=${tabType}`, { replace: true });
+          }
         }
       }
     }
   }, [queryProject, navigate, tabType]);
 
-  /**
-   * Dispatches validation inputs to the project creation API /create-project.
-   * If credentials match, caches keys in storage states and redirects client.
-   * @param {string} roomName - Form input project name
-   * @param {string} accessKey - Form input access verification key
-   */
   const handleSubmit = async (roomName, accessKey) => {
     setErrorMessage('');
     try {
-      const response = await fetch('/create-project', {
+      const isChat = tabType === 'chat';
+      const endpoint = isChat ? '/join-chat' : '/create-project';
+      const payload = isChat ? { room: roomName, accessKey } : { name: roomName, accessKey };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: roomName, accessKey })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
       if (response.ok) {
-        // Store project credential attributes
-        sessionStorage.setItem(`accesskey_project_${roomName}`, accessKey);
+        const keyPrefix = isChat ? 'chat' : 'project';
+        sessionStorage.setItem(`accesskey_${keyPrefix}_${roomName}`, accessKey);
+        setCookie(`accesskey_${keyPrefix}_${roomName}`, accessKey);
+        setCookie(`anonhub-active-${tabType}-room`, roomName);
+        
         if (data.ownerToken) {
-          // If the project was newly initialized, register owner token locally
-          localStorage.setItem(`owner_token_${roomName}`, data.ownerToken);
+          const ownerKey = isChat ? `owner_token_chat_${roomName}` : `owner_token_${roomName}`;
+          localStorage.setItem(ownerKey, data.ownerToken);
+          if (isChat) {
+            localStorage.setItem(`owner_token_${roomName}`, data.ownerToken);
+          }
         }
-        navigate(`/projects/${encodeURIComponent(roomName)}?tab=${tabType}`);
+        
+        if (tabType === 'chat') {
+          navigate(`/chat/${encodeURIComponent(roomName)}`);
+        } else if (tabType === 'call') {
+          navigate(`/call/${encodeURIComponent(roomName)}`);
+        } else if (tabType === 'project') {
+          navigate(`/projects/${encodeURIComponent(roomName)}`);
+        } else {
+          navigate(`/projects/${encodeURIComponent(roomName)}?tab=${tabType}`);
+        }
       } else {
         setErrorMessage(data.error || 'Could not validate or join room.');
       }
@@ -74,7 +101,26 @@ export default function StandaloneEntry({ tabType }) {
     }
   };
 
-  // If query project isn't set, show the entry overlay modal
+  let title = 'Collaborative Workspace';
+  let subtitle = 'Enter a room name and access key to join or create a shared session.';
+  
+  if (tabType === 'document') {
+    title = 'Collaborative Document Board';
+    subtitle = 'Enter a room name and access key to join or create a shared document session.';
+  } else if (tabType === 'code') {
+    title = 'Collaborative Coding Board';
+    subtitle = 'Enter a room name and access key to join or create a shared coding session.';
+  } else if (tabType === 'chat') {
+    title = 'Anonymous Chat Room Gateway';
+    subtitle = 'Enter a room name and access key to join or create a secure chat room.';
+  } else if (tabType === 'project') {
+    title = 'Collaborative Project Room Gateway';
+    subtitle = 'Enter a room name and access key to join or create a multi-pane project workspace.';
+  } else if (tabType === 'call') {
+    title = 'Dedicated Voice & Video Call';
+    subtitle = 'Enter a room name and access key to join or start a secure calling and screen share session.';
+  }
+
   if (queryProject) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
@@ -85,8 +131,8 @@ export default function StandaloneEntry({ tabType }) {
 
   return (
     <AccessKeyModal
-      title={`Collaborative ${tabType === 'document' ? 'Document' : 'Coding'} Board`}
-      subtitle={`Enter a room name and access key to join or create a shared ${tabType} session.`}
+      title={title}
+      subtitle={subtitle}
       showRoomInput={true}
       errorMessage={errorMessage}
       onSubmit={handleSubmit}

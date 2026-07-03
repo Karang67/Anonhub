@@ -13,9 +13,9 @@ import {
   Table, FileText, CheckSquare, ListTodo, Plus, Trash2, 
   Download, ArrowLeftRight, Edit3, Send, Check, X, 
   Copy, Bold, Italic, Underline, AlignLeft, AlignCenter, 
-  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff
+  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare
 } from 'lucide-react';
-import { initSocket } from '../services/socket';
+import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import './OfficeBoard.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,23 +132,51 @@ export default function OfficeBoard() {
   const [sheetData, setSheetData] = useState({}); // { A1: "10", B1: "=A1+5" }
   const [selectedCell, setSelectedCell] = useState(null);
   const [cellFormulaInput, setCellFormulaInput] = useState('');
+  const [tempCellInput, setTempCellInput] = useState('');
   const [editingCell, setEditingCell] = useState(null);
 
-  // Word Document editor state
   const [wordContent, setWordContent] = useState('');
   const editorRef = useRef(null);
+  const wordTimeoutRef = useRef(null);
+  const notesTimeoutRef = useRef(null);
   const [wordCount, setWordCount] = useState(0);
 
-  // Notes state
+  // Sync Word editor DOM innerHTML with state on tab switch or remote update
+  useEffect(() => {
+    if (activeTab === 'word' && editorRef.current) {
+      if (editorRef.current.innerHTML !== wordContent) {
+        editorRef.current.innerHTML = wordContent;
+      }
+      const text = editorRef.current.innerText || '';
+      const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+      setWordCount(words);
+    }
+  }, [activeTab, wordContent]);
+
+    // Notes state
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
   const [notesSearch, setNotesSearch] = useState('');
   const [isFormattingAi, setIsFormattingAi] = useState(false);
+  const [viewMode, setViewMode] = useState('original'); // 'original' | 'formatted'
+  const [formattedContent, setFormattedContent] = useState(null); // stores AI-formatted content for active note
 
   // Kanban Board state
   const [kanbanTasks, setKanbanTasks] = useState([]); // [{ id, title, desc, status: 'todo' | 'progress' | 'done' }]
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskForm, setTaskForm] = useState({ id: '', title: '', desc: '', status: 'todo' });
+
+  // Group Chat states
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const chatMessagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Initial Authorization & Gateway
@@ -170,7 +198,7 @@ export default function OfficeBoard() {
       // Handshake joining
       socket.emit('join office', {
         officeName: roomName,
-        accessKey: sessionStorage.getItem(`accesskey_office_${roomName}`) || '',
+        accessKey: sessionStorage.getItem(`accesskey_office_${roomName}`) || getCookie(`accesskey_office_${roomName}`) || '',
         ownerToken: cachedToken || ''
       });
     });
@@ -258,6 +286,10 @@ export default function OfficeBoard() {
       navigate('/office');
     });
 
+    socket.on('chat message', (msg) => {
+      setChatMessages(prev => [...prev, msg]);
+    });
+
     socket.on('error', (msg) => {
       alert(`Error: ${msg}`);
     });
@@ -294,6 +326,7 @@ export default function OfficeBoard() {
           localStorage.setItem(`anonhub-office-token-${roomInput.trim()}`, data.ownerToken);
         }
         sessionStorage.setItem(`accesskey_office_${roomInput.trim()}`, accessKeyInput.trim());
+        setCookie(`accesskey_office_${roomInput.trim()}`, accessKeyInput.trim());
         navigate(`/office/${encodeURIComponent(roomInput.trim())}`);
       }
     } catch (err) {
@@ -310,7 +343,9 @@ export default function OfficeBoard() {
   const handleCellSelect = (colId, rowIdx) => {
     const cellId = colId + rowIdx;
     setSelectedCell(cellId);
-    setCellFormulaInput(sheetData[cellId] || '');
+    const val = sheetData[cellId] || '';
+    setCellFormulaInput(val);
+    setTempCellInput(val);
   };
 
   const handleCellChange = (cellId, value) => {
@@ -327,17 +362,38 @@ export default function OfficeBoard() {
   const handleFormulaBarChange = (e) => {
     const val = e.target.value;
     setCellFormulaInput(val);
-    if (selectedCell) {
-      handleCellChange(selectedCell, val);
-    }
+    setTempCellInput(val);
   };
 
   const handleAddRow = () => {
     setSheetRows(r => r + 5);
   };
 
+  const handleRemoveRow = () => {
+    setSheetRows(r => Math.max(5, r - 5));
+  };
+
   const handleAddCol = () => {
     setSheetCols(c => Math.min(c + 2, 26)); // Cap at Z columns (26)
+  };
+
+  const handleRemoveCol = () => {
+    setSheetCols(c => Math.max(2, c - 2));
+  };
+
+  const handleClearSheet = () => {
+    if (window.confirm("Are you sure you want to clear the entire spreadsheet?")) {
+      setSheetData({});
+      setSelectedCell(null);
+      setCellFormulaInput('');
+      setTempCellInput('');
+      if (socketRef.current) {
+        socketRef.current.emit('update spreadsheet', {
+          officeName: roomName,
+          spreadsheet: '{}'
+        });
+      }
+    }
   };
 
   const exportToCSV = () => {
@@ -369,6 +425,88 @@ export default function OfficeBoard() {
     document.body.removeChild(link);
   };
 
+  const handleSendChatMessage = (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !socketRef.current) return;
+    socketRef.current.emit('send chat message', { officeName: roomName, msg: chatInput.trim() });
+    setChatInput('');
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Action Handlers: Kanban Board
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const handleOpenTaskModal = (status, existingTask = null) => {
+    if (existingTask) {
+      setTaskForm({ id: existingTask.id, title: existingTask.title, desc: existingTask.desc || '', status: existingTask.status });
+    } else {
+      setTaskForm({ id: '', title: '', desc: '', status });
+    }
+    setShowTaskModal(true);
+  };
+
+  const handleSaveTask = (e) => {
+    e.preventDefault();
+    if (!taskForm.title.trim()) return;
+
+    let updated;
+    if (taskForm.id) {
+      // Editing existing task
+      updated = kanbanTasks.map(t =>
+        t.id === taskForm.id
+          ? { ...t, title: taskForm.title, desc: taskForm.desc, status: taskForm.status }
+          : t
+      );
+    } else {
+      // Creating new task
+      const newTask = {
+        id: Math.random().toString(36).substring(2, 9),
+        title: taskForm.title.trim(),
+        desc: taskForm.desc.trim(),
+        status: taskForm.status
+      };
+      updated = [...kanbanTasks, newTask];
+    }
+
+    setKanbanTasks(updated);
+    setShowTaskModal(false);
+    setTaskForm({ id: '', title: '', desc: '', status: 'todo' });
+
+    if (socketRef.current) {
+      socketRef.current.emit('update kanban', {
+        officeName: roomName,
+        kanban: JSON.stringify(updated)
+      });
+    }
+  };
+
+  const handleDeleteTask = (taskId) => {
+    if (!window.confirm('Delete this task?')) return;
+    const updated = kanbanTasks.filter(t => t.id !== taskId);
+    setKanbanTasks(updated);
+
+    if (socketRef.current) {
+      socketRef.current.emit('update kanban', {
+        officeName: roomName,
+        kanban: JSON.stringify(updated)
+      });
+    }
+  };
+
+  const handleMoveTask = (taskId, newStatus) => {
+    const updated = kanbanTasks.map(t =>
+      t.id === taskId ? { ...t, status: newStatus } : t
+    );
+    setKanbanTasks(updated);
+
+    if (socketRef.current) {
+      socketRef.current.emit('update kanban', {
+        officeName: roomName,
+        kanban: JSON.stringify(updated)
+      });
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Action Handlers: Word Doc (Rich Editor)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -384,10 +522,13 @@ export default function OfficeBoard() {
       setWordCount(words);
 
       if (socketRef.current) {
-        socketRef.current.emit('update word', {
-          officeName: roomName,
-          wordContent: content
-        });
+        if (wordTimeoutRef.current) clearTimeout(wordTimeoutRef.current);
+        wordTimeoutRef.current = setTimeout(() => {
+          socketRef.current.emit('update word', {
+            officeName: roomName,
+            wordContent: content
+          });
+        }, 400);
       }
     }
   };
@@ -423,14 +564,6 @@ export default function OfficeBoard() {
     }
   };
 
-  const handleNoteContentChange = (id, newContent) => {
-    const updated = notes.map(n => n.id === id ? { ...n, content: newContent, updatedAt: new Date().toISOString() } : n);
-    setNotes(updated);
-    if (socketRef.current) {
-      socketRef.current.emit('update office notes', { officeName: roomName, notes: JSON.stringify(updated) });
-    }
-  };
-
   const handleDeleteNote = (id) => {
     if (!window.confirm('Delete this note permanently?')) return;
     const updated = notes.filter(n => n.id !== id);
@@ -442,6 +575,21 @@ export default function OfficeBoard() {
     }
     if (socketRef.current) {
       socketRef.current.emit('update office notes', { officeName: roomName, notes: JSON.stringify(updated) });
+    }
+  };
+
+  const handleNoteContentChange = (id, newContent) => {
+    const updated = notes.map(n => 
+      n.id === id 
+        ? { ...n, content: newContent, updatedAt: new Date().toISOString() } 
+        : n
+    );
+    setNotes(updated);
+    if (socketRef.current) {
+      if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
+      notesTimeoutRef.current = setTimeout(() => {
+        socketRef.current.emit('update office notes', { officeName: roomName, notes: JSON.stringify(updated) });
+      }, 400);
     }
   };
 
@@ -466,12 +614,39 @@ export default function OfficeBoard() {
     });
   };
 
-  const handleAiOrganize = async () => {
+  // Toggle between original and AI-formatted view
+  const toggleViewMode = () => {
+    setViewMode(prev => {
+      const newMode = prev === 'original' ? 'formatted' : 'original';
+      // Store current view mode in localStorage for persistence
+      localStorage.setItem(`office-board-view-mode-${roomName}`, newMode);
+      return newMode;
+    });
+  };
+
+  // Revert to original AI-organized content (undo button)
+  const revertToOriginal = () => {
+    setViewMode('original');
+    setFormattedContent(null); // Clear saved formatted version
+  };
+
+  // Load saved view mode from localStorage
+  useEffect(() => {
+    if (roomName) {
+      const savedViewMode = localStorage.getItem(`office-board-view-mode-${roomName}`);
+      if (savedViewMode === 'formatted') {
+        setViewMode('formatted');
+      }
+    }
+  }, [roomName]);
+
+    const handleAiOrganize = async () => {
     if (!activeNoteId) return;
     const note = notes.find(n => n.id === activeNoteId);
     if (!note || !note.content.trim()) return;
 
     setIsFormattingAi(true);
+    setViewMode('original'); // Force display of original during processing
     try {
       const response = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -484,11 +659,10 @@ export default function OfficeBoard() {
       const data = await response.json();
       const organizedContent = data.response;
       
-      const updated = notes.map(n => n.id === activeNoteId ? { ...n, content: organizedContent, updatedAt: new Date().toISOString() } : n);
-      setNotes(updated);
-      if (socketRef.current) {
-        socketRef.current.emit('update office notes', { officeName: roomName, notes: JSON.stringify(updated) });
-      }
+      setFormattedContent(organizedContent); // Store formatted version
+      setViewMode('formatted'); // Switch to formatted view
+      
+      // Optionally save formatted version to the note but don't replace immediately
     } catch (err) {
       alert('Failed to organize note via AI.');
     } finally {
@@ -496,61 +670,105 @@ export default function OfficeBoard() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Action Handlers: Kanban Board
-  // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleOpenTaskModal = (status, task = null) => {
-    if (task) {
-      setTaskForm({ id: task.id, title: task.title, desc: task.desc, status: task.status });
-    } else {
-      setTaskForm({ id: '', title: '', desc: '', status });
-    }
-    setShowTaskModal(true);
-  };
+  // Persist state in localStorage when tab is not active
+  useEffect(() => {
+    if (!roomName) return;
 
-  const handleSaveTask = (e) => {
-    e.preventDefault();
-    if (!taskForm.title.trim()) return;
+    const saveStateToStorage = () => {
+      if (activeTab !== 'excel') {
+        localStorage.setItem(`office-${roomName}-sheetData`, JSON.stringify(sheetData));
+      }
+      if (activeTab !== 'word') {
+        localStorage.setItem(`office-${roomName}-wordContent`, wordContent);
+      }
+      if (activeTab !== 'notes') {
+        localStorage.setItem(`office-${roomName}-notes`, JSON.stringify(notes));
+      }
+      if (activeTab !== 'kanban') {
+        localStorage.setItem(`office-${roomName}-kanbanTasks`, JSON.stringify(kanbanTasks));
+      }
+      localStorage.setItem(`office-${roomName}-activeTab`, activeTab);
+    };
 
-    let updatedTasks = [];
-    if (taskForm.id) {
-      // Editing
-      updatedTasks = kanbanTasks.map(t => t.id === taskForm.id ? { ...t, title: taskForm.title, desc: taskForm.desc, status: taskForm.status } : t);
-    } else {
-      // Creating
-      const newTask = {
-        id: Math.random().toString(36).substring(2, 9),
-        title: taskForm.title.trim(),
-        desc: taskForm.desc.trim(),
-        status: taskForm.status
-      };
-      updatedTasks = [...kanbanTasks, newTask];
-    }
+    const restoreStateFromStorage = () => {
+      const savedSheetData = localStorage.getItem(`office-${roomName}-sheetData`);
+      if (savedSheetData && activeTab === 'excel') {
+        try {
+          const parsed = JSON.parse(savedSheetData);
+          if (JSON.stringify(parsed) !== JSON.stringify(sheetData)) {
+            setSheetData(parsed);
+          }
+        } catch (e) {
+          console.warn('Failed to restore sheet data:', e);
+        }
+      }
 
-    setKanbanTasks(updatedTasks);
-    setShowTaskModal(false);
-    if (socketRef.current) {
-      socketRef.current.emit('update kanban', { officeName: roomName, kanban: JSON.stringify(updatedTasks) });
-    }
-  };
+      const savedWordContent = localStorage.getItem(`office-${roomName}-wordContent`);
+      if (savedWordContent && activeTab === 'word' && savedWordContent !== wordContent) {
+        setWordContent(savedWordContent);
+      }
 
-  const handleMoveTask = (taskId, targetStatus) => {
-    const updated = kanbanTasks.map(t => t.id === taskId ? { ...t, status: targetStatus } : t);
-    setKanbanTasks(updated);
-    if (socketRef.current) {
-      socketRef.current.emit('update kanban', { officeName: roomName, kanban: JSON.stringify(updated) });
-    }
-  };
+      const savedNotes = localStorage.getItem(`office-${roomName}-notes`);
+      if (savedNotes && activeTab === 'notes') {
+        try {
+          const parsedNotes = JSON.parse(savedNotes);
+          if (JSON.stringify(parsedNotes) !== JSON.stringify(notes)) {
+            setNotes(parsedNotes);
+          }
+        } catch (e) {
+          console.warn('Failed to restore notes:', e);
+        }
+      }
 
-  const handleDeleteTask = (taskId) => {
-    if (!window.confirm('Delete this task?')) return;
-    const updated = kanbanTasks.filter(t => t.id !== taskId);
-    setKanbanTasks(updated);
-    if (socketRef.current) {
-      socketRef.current.emit('update kanban', { officeName: roomName, kanban: JSON.stringify(updated) });
-    }
-  };
+      const savedKanbanTasks = localStorage.getItem(`office-${roomName}-kanbanTasks`);
+      if (savedKanbanTasks && activeTab === 'kanban') {
+        try {
+          const parsedTasks = JSON.parse(savedKanbanTasks);
+          if (JSON.stringify(parsedTasks) !== JSON.stringify(kanbanTasks)) {
+            setKanbanTasks(parsedTasks);
+          }
+        } catch (e) {
+          console.warn('Failed to restore kanban tasks:', e);
+        }
+      }
+
+      const savedActiveTab = localStorage.getItem(`office-${roomName}-activeTab`);
+      if (savedActiveTab) {
+        setActiveTab(savedActiveTab);
+      }
+    };
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        restoreStateFromStorage();
+      } else {
+        saveStateToStorage();
+      }
+    });
+
+    window.addEventListener('beforeunload', saveStateToStorage);
+
+    return () => {
+      window.removeEventListener('visibilitychange', () => {});
+      window.removeEventListener('beforeunload', saveStateToStorage);
+    };
+  }, [roomName, activeTab, sheetData, wordContent, notes, kanbanTasks]);
+
+  // Auto-save state periodically
+  useEffect(() => {
+    if (!roomName) return;
+
+    const interval = setInterval(() => {
+      localStorage.setItem(`office-${roomName}-lastActive`, Date.now().toString());
+      localStorage.setItem(`office-${roomName}-sheetData`, JSON.stringify(sheetData));
+      localStorage.setItem(`office-${roomName}-wordContent`, wordContent);
+      localStorage.setItem(`office-${roomName}-notes`, JSON.stringify(notes));
+      localStorage.setItem(`office-${roomName}-kanbanTasks`, JSON.stringify(kanbanTasks));
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [roomName, sheetData, wordContent, notes, kanbanTasks]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Rendering Landing Page / Gateway Mode
@@ -621,10 +839,10 @@ export default function OfficeBoard() {
             👥 {users.length} connected
           </div>
           <button className="office-share-btn" onClick={() => setShowShareModal(true)}>
-            🔗 Share Board
+            <Link2 size={14} /> <span className="btn-text">Share Board</span>
           </button>
-          <Link to="/" className="office-exit-btn">
-            🚪 Leave Suite
+          <Link to="/" onClick={() => deleteCookie(`accesskey_office_${roomName}`)} className="office-exit-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <LogOut size={14} /> <span className="btn-text">Leave Suite</span>
           </Link>
         </div>
       </div>
@@ -651,9 +869,12 @@ export default function OfficeBoard() {
         {/* TABS CONTAINER 1: EXCEL SPREADSHEET */}
         {activeTab === 'excel' && (
           <div className="office-pane excel-pane">
-            <div className="excel-toolbar">
-              <button onClick={handleAddRow} className="excel-tool-btn">➕ Add Rows</button>
-              <button onClick={handleAddCol} className="excel-tool-btn">➕ Add Columns</button>
+            <div className="excel-toolbar" style={{ flexWrap: 'wrap', gap: '8px' }}>
+              <button onClick={handleAddRow} className="excel-tool-btn" title="Add 5 rows to the spreadsheet">➕ Add Rows</button>
+              <button onClick={handleRemoveRow} className="excel-tool-btn" title="Remove 5 rows from the spreadsheet">➖ Remove Rows</button>
+              <button onClick={handleAddCol} className="excel-tool-btn" title="Add 2 columns to the spreadsheet">➕ Add Columns</button>
+              <button onClick={handleRemoveCol} className="excel-tool-btn" title="Remove 2 columns from the spreadsheet">➖ Remove Columns</button>
+              <button onClick={handleClearSheet} className="excel-tool-btn" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} title="Clear all cell values and formulas">🧹 Clear Sheet</button>
               <button onClick={exportToCSV} className="excel-tool-btn csv-btn"><Download size={14} /> Export CSV</button>
               <div className="excel-formula-bar">
                 <span className="formula-label">fx</span>
@@ -663,6 +884,16 @@ export default function OfficeBoard() {
                   placeholder="Select a cell to enter value or formula (e.g. =A1+B1 or =SUM(A1:A5))"
                   value={cellFormulaInput}
                   onChange={handleFormulaBarChange}
+                  onBlur={() => {
+                    if (selectedCell) {
+                      handleCellChange(selectedCell, cellFormulaInput);
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.target.blur();
+                    }
+                  }}
                   disabled={!selectedCell}
                 />
               </div>
@@ -698,18 +929,37 @@ export default function OfficeBoard() {
                             <td 
                               key={cIdx} 
                               className={`excel-cell ${isSelected ? 'selected' : ''}`}
-                              onClick={() => handleCellSelect(colLetter, rowNum)}
-                              onDoubleClick={() => setEditingCell(cellId)}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditingCell(cellId);
+                                  setTempCellInput(sheetData[cellId] || '');
+                                } else {
+                                  handleCellSelect(colLetter, rowNum);
+                                }
+                              }}
+                              onDoubleClick={() => {
+                                setEditingCell(cellId);
+                                setTempCellInput(sheetData[cellId] || '');
+                              }}
                             >
                               {isEditing ? (
                                 <input
                                   type="text"
                                   className="excel-cell-editor"
-                                  value={rawVal}
-                                  onChange={e => handleCellChange(cellId, e.target.value)}
-                                  onBlur={() => setEditingCell(null)}
+                                  value={tempCellInput}
+                                  onChange={e => {
+                                    setTempCellInput(e.target.value);
+                                    setCellFormulaInput(e.target.value);
+                                  }}
+                                  onBlur={() => {
+                                    handleCellChange(cellId, tempCellInput);
+                                    setEditingCell(null);
+                                  }}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') setEditingCell(null);
+                                    if (e.key === 'Enter') {
+                                      handleCellChange(cellId, tempCellInput);
+                                      setEditingCell(null);
+                                    }
                                   }}
                                   autoFocus
                                 />
@@ -796,7 +1046,11 @@ export default function OfficeBoard() {
                       key={n.id}
                       className={`note-list-item ${n.id === activeNoteId ? 'active' : ''}`}
                       style={{ borderLeftColor: n.color }}
-                      onClick={() => setActiveNoteId(n.id)}
+                      onClick={() => {
+                        setActiveNoteId(n.id);
+                        setFormattedContent(null);
+                        setViewMode('original');
+                      }}
                     >
                       <div className="note-item-header">
                         <span className="note-item-title">{getNoteTitle(n.content)}</span>
@@ -843,9 +1097,30 @@ export default function OfficeBoard() {
                   <div className="notes-preview-half">
                     <div className="notes-preview-header">
                       <h3>✨ Arranged Preview Layout</h3>
+                      {formattedContent && (
+                        <div className="notes-preview-actions">
+                          <button 
+                            onClick={toggleViewMode} 
+                            className="notes-preview-toggle-btn"
+                          >
+                            Show {viewMode === 'original' ? 'AI Organized' : 'Original'}
+                          </button>
+                          <button 
+                            onClick={revertToOriginal} 
+                            className="notes-preview-revert-btn"
+                            title="Revert to original preview"
+                          >
+                            Undo
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="notes-arranged-viewport">
-                      {parseSmartNotes(notes.find(n => n.id === activeNoteId)?.content)}
+                      {parseSmartNotes(
+                        (viewMode === 'formatted' && formattedContent)
+                          ? formattedContent
+                          : notes.find(n => n.id === activeNoteId)?.content
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1007,6 +1282,63 @@ export default function OfficeBoard() {
           </div>
         </div>
       )}
+
+      {/* Floating Group Chat Widget */}
+      <div className="office-chat-bubble-wrapper">
+        <button
+          className={`office-chat-bubble ${isChatOpen ? 'active' : ''}`}
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          title="Office Group Chat"
+        >
+          <MessageSquare size={22} />
+        </button>
+      </div>
+
+      <div className={`office-chat-window ${isChatOpen ? 'open' : ''}`}>
+        <div className="office-chat-header">
+          <div className="office-chat-header-title">
+            <MessageSquare className="office-glow-icon" size={18} />
+            <span>Office Chat ({users.length})</span>
+          </div>
+          <button className="office-chat-close-btn" onClick={() => setIsChatOpen(false)} title="Close Chat">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="office-chat-body">
+          <div className="office-messages-list">
+            {chatMessages.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                No messages yet. Send a message to start collaborating!
+              </div>
+            ) : (
+              chatMessages.map((msg, index) => (
+                <div key={index} className={`office-message-row ${msg.username === username ? 'user' : 'other'}`}>
+                  <div className="office-message-bubble">
+                    <div className="office-message-sender">{msg.username}</div>
+                    <div className="office-message-text">{msg.msg}</div>
+                    <div className="office-message-time">{msg.time}</div>
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+        </div>
+
+        <form onSubmit={handleSendChatMessage} className="office-chat-footer">
+          <input
+            type="text"
+            className="office-chat-input"
+            placeholder="Type a message..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+          />
+          <button type="submit" className="office-chat-send-btn" disabled={!chatInput.trim()}>
+            <Send size={14} />
+          </button>
+        </form>
+      </div>
 
     </div>
   );

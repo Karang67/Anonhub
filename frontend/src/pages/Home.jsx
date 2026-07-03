@@ -23,8 +23,8 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import AIChatBot from '../components/AIChatBot';
 import './Home.css';
+import { setCookie } from '../services/socket';
 
 /**
  * Home Component
@@ -195,6 +195,7 @@ export default function Home() {
       if (response.ok && data.redirectUrl) {
         // Save security/access configuration in storage buffers
         sessionStorage.setItem(`accesskey_project_${projectName.trim()}`, projectKey.trim());
+        setCookie(`accesskey_project_${projectName.trim()}`, projectKey.trim());
         if (data.ownerToken) {
           // Store project creator token under BOTH keys:
           // - owner_token_<name>       → used by Project Room
@@ -690,8 +691,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* AI Chat Copilot Widget */}
-      <AIChatBot />
     </div>
   );
 }

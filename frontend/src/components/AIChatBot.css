@@ -7,7 +7,7 @@
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 9999;
+  z-index: 990; /* Placed below slide-over drawers (z-index: 1000) */
   width: 56px;
   height: 56px;
   user-select: none;
@@ -91,7 +91,7 @@
 /* ── Floating chat window ─────────────────────────────────── */
 .ai-chatbot-window {
   position: fixed;
-  z-index: 9998;
+  z-index: 980; /* Placed below slide-over drawers (z-index: 1000) */
   width: 380px;
   height: 520px;
   background: rgba(30, 41, 59, 0.92);

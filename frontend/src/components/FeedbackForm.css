@@ -1,0 +1,78 @@
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--card-background);
+  border: 1.5px solid var(--border-color);
+  padding: 14px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.feedback-row {
+  display: flex;
+  gap: 8px;
+}
+
+.feedback-input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--light-color);
+  color: var(--text-color);
+}
+
+.feedback-textarea {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--light-color);
+  color: var(--text-color);
+  resize: vertical;
+}
+
+.feedback-select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--light-color);
+}
+
+.feedback-label {
+  align-self: center;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.feedback-submit {
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  border: none;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feedback-cancel {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.feedback-success {
+  background: rgba(22,163,74,0.12);
+  border: 1px solid rgba(22,163,74,0.3);
+  padding: 12px;
+  border-radius: 8px;
+  color: #064e3b;
+  font-weight: 700;
+}
+
+.feedback-error {
+  color: #b91c1c;
+  font-weight: 600;
+}

@@ -6,16 +6,68 @@
  * from static links or environments. Establishes the global layout flex grid structure.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Home from './pages/Home';
-import About from './pages/About';
-import Help from './pages/Help';
-import ChatRoom from './pages/ChatRoom';
-import ProjectRoom from './pages/ProjectRoom';
-import StandaloneEntry from './pages/StandaloneEntry';
-import OfficeBoard from './pages/OfficeBoard';
+import AIChatBot from './components/AIChatBot';
+
+// Lazy load pages to decrease initial bundle size
+const Home = lazy(() => import('./pages/Home'));
+const About = lazy(() => import('./pages/About'));
+const Help = lazy(() => import('./pages/Help'));
+const ChatRoom = lazy(() => import('./pages/ChatRoom'));
+const ProjectRoom = lazy(() => import('./pages/ProjectRoom'));
+const StandaloneEntry = lazy(() => import('./pages/StandaloneEntry'));
+const OfficeBoard = lazy(() => import('./pages/OfficeBoard'));
+const CallRoom = lazy(() => import('./pages/CallRoom'));
+const AdminFeedback = lazy(() => import('./pages/AdminFeedback'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+
+// Modern premium loading spinner component
+function LoadingSpinner() {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '60vh',
+      width: '100%',
+      fontFamily: 'var(--font-sans)',
+      gap: '1.5rem',
+    }}>
+      <div style={{
+        width: '50px',
+        height: '50px',
+        border: '3px solid rgba(169, 63, 85, 0.1)',
+        borderTop: '3px solid var(--primary-color)',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+      }} />
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div style={{
+        fontSize: '1rem',
+        fontWeight: '600',
+        color: 'var(--text-color)',
+        letterSpacing: '0.08em',
+        animation: 'pulse 1.5s ease-in-out infinite',
+      }}>
+        LOADING WORKSPACE...
+      </div>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 /**
  * ScrollToTop Component
@@ -42,6 +94,7 @@ function AppContent() {
   const hideFooter = location.pathname.startsWith('/chat/') ||
                      location.pathname.startsWith('/projects/') ||
                      location.pathname.startsWith('/office') ||
+                     location.pathname.startsWith('/call/') ||
                      location.pathname === '/document' ||
                      location.pathname === '/document.html' ||
                      location.pathname === '/code' ||
@@ -54,31 +107,42 @@ function AppContent() {
 
       {/* Main Workspace Frame */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Routes>
-          {/* Primary Entry Paths */}
-          <Route path="/" element={<Home />} />
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            {/* Primary Entry Paths */}
+            <Route path="/" element={<Home />} />
 
-          {/* Informational Pages (Supports direct routes and .html suffixes) */}
-          <Route path="/about" element={<About />} />
-          <Route path="/about.html" element={<About />} />
-          <Route path="/help" element={<Help />} />
-          <Route path="/help.html" element={<Help />} />
+            {/* Informational Pages (Supports direct routes and .html suffixes) */}
+            <Route path="/about" element={<About />} />
+            <Route path="/about.html" element={<About />} />
+            <Route path="/help" element={<Help />} />
+            <Route path="/help.html" element={<Help />} />
 
-          {/* Dynamic Collaboration Routes */}
-          <Route path="/chat/:roomName" element={<ChatRoom />} />
-          <Route path="/projects/:projectName" element={<ProjectRoom />} />
+            {/* Dynamic Collaboration Routes */}
+            <Route path="/chat/:roomName" element={<ChatRoom />} />
+            <Route path="/projects/:projectName" element={<ProjectRoom />} />
+            <Route path="/call/:roomName" element={<CallRoom />} />
 
-          {/* Standalone Single-Pane Workspace Gateway Entries */}
-          <Route path="/document" element={<StandaloneEntry tabType="document" />} />
-          <Route path="/document.html" element={<StandaloneEntry tabType="document" />} />
-          <Route path="/code" element={<StandaloneEntry tabType="code" />} />
-          <Route path="/code.html" element={<StandaloneEntry tabType="code" />} />
+            {/* Standalone Single-Pane Workspace Gateway Entries */}
+            <Route path="/chat" element={<StandaloneEntry tabType="chat" />} />
+            <Route path="/chat.html" element={<StandaloneEntry tabType="chat" />} />
+            <Route path="/projects" element={<StandaloneEntry tabType="project" />} />
+            <Route path="/projects.html" element={<StandaloneEntry tabType="project" />} />
+            <Route path="/call" element={<StandaloneEntry tabType="call" />} />
+            <Route path="/call.html" element={<StandaloneEntry tabType="call" />} />
+            <Route path="/document" element={<StandaloneEntry tabType="document" />} />
+            <Route path="/document.html" element={<StandaloneEntry tabType="document" />} />
+            <Route path="/code" element={<StandaloneEntry tabType="code" />} />
+            <Route path="/code.html" element={<StandaloneEntry tabType="code" />} />
 
-          {/* Collaborative Office Board Routes */}
-          <Route path="/office" element={<OfficeBoard />} />
-          <Route path="/office.html" element={<OfficeBoard />} />
-          <Route path="/office/:roomName" element={<OfficeBoard />} />
-        </Routes>
+            {/* Collaborative Office Board Routes */}
+            <Route path="/office" element={<OfficeBoard />} />
+            <Route path="/office.html" element={<OfficeBoard />} />
+            <Route path="/office/:roomName" element={<OfficeBoard />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/feedback" element={<AdminFeedback />} />
+          </Routes>
+        </Suspense>
       </div>
 
       {/* Global sticky footer - dynamically hidden on workspace views */}
@@ -87,6 +151,9 @@ function AppContent() {
           <p style={{ margin: 0 }}>&copy; 2025 AnonHub. All rights reserved.</p>
         </footer>
       )}
+
+      {/* Global Floating AI Chatbot Widget */}
+      <AIChatBot />
     </div>
   );
 }

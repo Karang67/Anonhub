@@ -18,3 +18,20 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// Service worker: register only in production. In development we unregister
+// any existing service workers to avoid stale caches causing blank-first-loads.
+if ('serviceWorker' in navigator) {
+  if (import.meta.env && import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(reg => console.log('[SW] Registered:', reg.scope))
+        .catch(err => console.warn('[SW] Registration failed:', err));
+    });
+  } else {
+    // Development: ensure no service worker interferes
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).catch(() => {});
+  }
+}
+

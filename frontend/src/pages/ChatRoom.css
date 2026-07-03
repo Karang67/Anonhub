@@ -272,6 +272,15 @@ html[data-theme="dark"] .system-bubble {
   flex-direction: column;
   padding: 24px;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* Limit call widget height inside chat sidebar */
+.chat-sidebar .webrtc-call-container {
+  flex-shrink: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 8px;
 }
 
 .sidebar-header {
@@ -309,6 +318,7 @@ html[data-theme="dark"] .system-bubble {
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  flex: 1;
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
@@ -411,19 +421,23 @@ html[data-theme="dark"] .system-bubble {
 
   /* Header bar: tighter on mobile */
   .header-bar {
-    padding: 8px 12px;
+    padding: 10px 12px;
     font-size: 0.88rem;
-    gap: 6px;
-    min-height: 46px;
+    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: auto;
   }
 
   .header-room-name {
     font-size: 0.9rem;
-    max-width: 120px;
+    max-width: 100%;
   }
 
   .header-bar-actions {
-    gap: 6px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .workspace-tour-trigger-btn {

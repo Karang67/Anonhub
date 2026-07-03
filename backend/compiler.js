@@ -21,8 +21,16 @@ const path = require('path');
 // Target directory for temporary source code files
 const TEMP_DIR = path.join(__dirname, 'temp_exec');
 
-// Ensure the temporary directory exists on boot
-if (!fs.existsSync(TEMP_DIR)) {
+// Ensure the temporary directory exists and is clean on boot
+if (fs.existsSync(TEMP_DIR)) {
+  fs.readdirSync(TEMP_DIR).forEach(file => {
+    try {
+      fs.unlinkSync(path.join(TEMP_DIR, file));
+    } catch (err) {
+      console.error(`Failed to clean temp file ${file} on startup:`, err.message);
+    }
+  });
+} else {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 

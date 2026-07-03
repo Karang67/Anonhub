@@ -1,0 +1,9 @@
+/* Minimal Help page styles for the feedback section */
+.page-container h3 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.page-container p {
+  font-size: 0.95rem;
+}

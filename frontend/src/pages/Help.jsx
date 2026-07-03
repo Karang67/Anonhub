@@ -8,6 +8,8 @@
 import React, { useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
 import './About.css';
+import FeedbackForm from '../components/FeedbackForm';
+import './Help.css';
 
 /**
  * Help Component
@@ -72,6 +74,13 @@ export default function Help() {
             </div>
           );
         })}
+      </div>
+
+      {/* Feedback Form Section */}
+      <div style={{ marginTop: 32 }}>
+        <h3 style={{ marginBottom: 12 }}>Send Feedback</h3>
+        <p style={{ marginTop: 0, marginBottom: 12, color: 'var(--text-muted)' }}>Share suggestions, report bugs, or give general feedback.</p>
+        <FeedbackForm onSuccess={() => { /* could show toast later */ }} />
       </div>
     </main>
   );

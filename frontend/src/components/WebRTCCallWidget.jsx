@@ -5,7 +5,7 @@
  * Supports camera toggle, microphone mute/unmute, and screen sharing.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, Volume2 } from 'lucide-react';
 import './WebRTCCallWidget.css';
 
@@ -24,16 +24,30 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const [peers, setPeers] = useState([]); // [{ socketId, username, stream }]
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
   const peersRef = useRef({}); // { socketId: RTCPeerConnection }
   const streamsRef = useRef({}); // { socketId: MediaStream }
   const screenStreamRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const reconnectionAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Call Session Actions
+  // Enhanced Call Session Actions
   // ─────────────────────────────────────────────────────────────────────────────
+
+  const handleReconnect = useCallback(() => {
+    console.log('Manual reconnection triggered');
+    if (socket) {
+      setIsReconnecting(true);
+      socket.disconnect();
+      socket.connect();
+    }
+  }, [socket]);
 
   const startCall = async () => {
     try {
@@ -48,9 +62,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setInCall(true);
       setVideoMuted(false);
       setMicMuted(false);
+      setConnectionStatus('connected');
 
-      // Join the signaling pool
-      socket.emit('webrtc-join-call', { projectName });
+      // Join the signaling pool with enhanced error handling
+      socket.emit('webrtc-join-call', { projectName }, (response) => {
+        console.log('Join call response:', response);
+        if (response && response.error) {
+          console.error('Failed to join call:', response.error);
+          alert(`Could not join the call: ${response.error}`);
+          endCall();
+        }
+      });
     } catch (err) {
       console.error('Failed to get media devices:', err);
       alert('Camera/microphone access is required to start a call.');
@@ -73,9 +95,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       screenStreamRef.current = null;
     }
 
-    // Close all peer connections
+    // Close all peer connections with cleanup
     Object.keys(peersRef.current).forEach(id => {
-      peersRef.current[id].close();
+      try {
+        peersRef.current[id].close();
+      } catch (e) {
+        console.warn(`Error closing peer connection ${id}:`, e);
+      }
     });
     peersRef.current = {};
     streamsRef.current = {};
@@ -83,56 +109,113 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     setPeers([]);
     setInCall(false);
     setScreenSharing(false);
+    setConnectionStatus('disconnected');
+
+    // Clear any pending reconnection attempts
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    reconnectionAttempts.current = 0;
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // WebRTC Signaling & Handshake
+  // Enhanced WebRTC Signaling & Handshake
   // ─────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!socket) return;
 
-    // A new user joined the call room
-    const handleUserJoined = async ({ socketId, username: peerName }) => {
-      console.log('Peer joined call:', socketId, peerName);
-      const pc = createPeerConnection(socketId, peerName, true);
-      peersRef.current[socketId] = pc;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    let reconnectTimeout = null;
+
+    const handleSocketConnect = () => {
+      console.log('Socket connected, rejoining call if needed');
+      setIsReconnecting(false);
+      setConnectionStatus('connected');
+
+      if (inCall) {
+        socket.emit('webrtc-join-call', { projectName }, (response) => {
+          console.log('Rejoin call response:', response);
+          if (response && response.error) {
+            console.error('Failed to rejoin call after reconnect:', response.error);
+          }
+        });
+      }
     };
 
-    // Receive RTC offers, answers, ICE candidates
+    const handleSocketDisconnect = () => {
+      console.log('Socket disconnected, attempting to reconnect');
+      setConnectionStatus('reconnecting');
+      setIsReconnecting(true);
+
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+
+      const attemptReconnect = () => {
+        reconnectAttempts++;
+        if (reconnectAttempts <= maxReconnectAttempts) {
+          const backoffTime = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
+          reconnectTimeout = setTimeout(() => {
+            console.log(`Reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+            socket.connect();
+          }, backoffTime);
+        } else {
+          console.error('Max reconnection attempts reached');
+          setConnectionStatus('reconnection-failed');
+        }
+      };
+
+      reconnectTimeout = setTimeout(attemptReconnect, 1000);
+    };
+
+    const handleUserJoined = async ({ socketId, username: peerName }) => {
+      if (!peersRef.current[socketId]) {
+        const pc = createPeerConnection(socketId, peerName, true);
+        peersRef.current[socketId] = pc;
+      }
+    };
+
     const handleSignal = async ({ senderId, signal }) => {
       let pc = peersRef.current[senderId];
-      
-      // If peer connection doesn't exist, create it (as answerer)
+
       if (!pc) {
         pc = createPeerConnection(senderId, 'Anonymous participant', false);
         peersRef.current[senderId] = pc;
       }
 
-      if (signal.sdp) {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-        if (signal.sdp.type === 'offer') {
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit('webrtc-signal', {
-            targetId: senderId,
-            signal: { sdp: pc.localDescription }
-          });
+      try {
+        if (signal.sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          if (signal.sdp.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('webrtc-signal', {
+              targetId: senderId,
+              signal: { sdp: pc.localDescription }
+            });
+          }
+        } else if (signal.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } catch (e) {
+            console.warn('Error adding ICE candidate:', e);
+          }
         }
-      } else if (signal.candidate) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-        } catch (e) {
-          console.warn('Error adding ICE candidate:', e);
-        }
+      } catch (err) {
+        console.error('Error processing signal:', err);
       }
     };
 
-    // Participant left the call
     const handleUserLeft = ({ socketId }) => {
-      console.log('Peer left call:', socketId);
       if (peersRef.current[socketId]) {
-        peersRef.current[socketId].close();
+        try {
+          peersRef.current[socketId].close();
+        } catch (e) {
+          console.warn(`Error closing peer connection ${socketId}:`, e);
+        }
         delete peersRef.current[socketId];
       }
       if (streamsRef.current[socketId]) {
@@ -141,30 +224,31 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setPeers(prev => prev.filter(p => p.socketId !== socketId));
     };
 
+    socket.on('connect', handleSocketConnect);
+    socket.on('disconnect', handleSocketDisconnect);
     socket.on('webrtc-user-joined', handleUserJoined);
     socket.on('webrtc-signal', handleSignal);
     socket.on('webrtc-user-left', handleUserLeft);
 
     return () => {
+      socket.off('connect', handleSocketConnect);
+      socket.off('disconnect', handleSocketDisconnect);
       socket.off('webrtc-user-joined', handleUserJoined);
       socket.off('webrtc-signal', handleSignal);
       socket.off('webrtc-user-left', handleUserLeft);
-      // Clean call on unmount
-      if (inCall) endCall();
+      
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (inCall) {
+        endCall();
+      }
     };
   }, [socket, inCall, projectName]);
 
   const createPeerConnection = (peerSocketId, peerName, isInitiator) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
-    // Add local tracks to the connection
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
-
-    // ICE Candidate gathering
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit('webrtc-signal', {
@@ -174,7 +258,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       }
     };
 
-    // Remote stream track added
     pc.ontrack = (event) => {
       const remoteStream = event.streams[0];
       streamsRef.current[peerSocketId] = remoteStream;
@@ -191,7 +274,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       });
     };
 
-    // If initiator, generate the RTC offer
     pc.onnegotiationneeded = async () => {
       if (isInitiator) {
         try {
@@ -207,12 +289,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       }
     };
 
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
     return pc;
   };
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Track Controls
-  // ─────────────────────────────────────────────────────────────────────────────
 
   const toggleMic = () => {
     if (localStreamRef.current) {
@@ -236,7 +320,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const toggleScreenShare = async () => {
     if (screenSharing) {
-      // Stop screen sharing and return to webcam
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(t => t.stop());
         screenStreamRef.current = null;
@@ -252,13 +335,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         const screenTrack = stream.getVideoTracks()[0];
         replaceVideoTrack(screenTrack);
 
-        // When user stops sharing via browser bar
         screenTrack.onended = () => {
           setScreenSharing(false);
           replaceVideoTrack(localStreamRef.current.getVideoTracks()[0]);
         };
       } catch (err) {
         console.error('Failed to start screen share:', err);
+        if (err.name === 'AbortError') {
+          console.log('Screen sharing cancelled by user');
+        } else {
+          alert('Failed to start screen sharing. Please try again.');
+        }
       }
     }
   };
@@ -267,10 +354,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     Object.values(peersRef.current).forEach(pc => {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
       if (sender) {
-        sender.replaceTrack(newTrack);
+        sender.replaceTrack(newTrack).catch(err => {
+          console.error('Error replacing video track:', err);
+        });
       }
     });
-    // Update local video element preview
+
     if (localVideoRef.current) {
       const currentStream = localVideoRef.current.srcObject;
       if (currentStream) {
@@ -278,17 +367,28 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         if (oldTrack) {
           currentStream.removeTrack(oldTrack);
           currentStream.addTrack(newTrack);
+          // Re-assign srcObject to force browser video element refresh
+          localVideoRef.current.srcObject = currentStream;
         }
       }
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // DOM Render
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <div className="webrtc-call-container">
+      {connectionStatus === 'reconnection-failed' && (
+        <div className="connection-error-banner">
+          <span>Connection lost. Try to reconnect</span>
+          <button onClick={handleReconnect} className="reconnect-btn">Reconnect</button>
+        </div>
+      )}
+
+      {isReconnecting && (
+        <div className="reconnecting-banner">
+          <span>🔄 Reconnecting...</span>
+        </div>
+      )}
+
       {!inCall ? (
         <button className="call-btn-trigger" onClick={startCall}>
           <PhoneCall size={14} /> Join Voice & Video
@@ -296,7 +396,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       ) : (
         <div className="webrtc-call-workspace">
           <div className="webrtc-video-grid">
-            {/* Local Client View */}
             <div className="video-card local-view">
               <video 
                 ref={localVideoRef} 
@@ -315,13 +414,11 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               )}
             </div>
 
-            {/* Remote Participants Views */}
             {peers.map(peer => (
               <VideoCard key={peer.socketId} peer={peer} />
             ))}
           </div>
 
-          {/* Controls Bar */}
           <div className="webrtc-controls-bar">
             <button 
               onClick={toggleMic} 
@@ -330,7 +427,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             >
               {micMuted ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
-            
+
             <button 
               onClick={toggleVideo} 
               className={`call-tool-btn ${videoMuted ? 'active' : ''}`}
@@ -361,9 +458,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   );
 }
 
-/**
- * Peer Video stream binder component helper
- */
 function VideoCard({ peer }) {
   const videoRef = useRef(null);
 

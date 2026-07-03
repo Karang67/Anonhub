@@ -15,10 +15,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil } from 'lucide-react';
+import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall } from 'lucide-react';
 import QRCode from 'qrcode';
 import { initSocket, getCookie } from '../services/socket';
 import AccessKeyModal from '../components/AccessKeyModal';
+import WebRTCCallWidget from '../components/WebRTCCallWidget';
 import './ChatRoom.css';
 
 // ─── Image URL detection ─────────────────────────────────────────────────────
@@ -172,6 +173,7 @@ export default function ChatRoom() {
   const [isEditingNickname, setIsEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState('');
   const [mySocketId, setMySocketId] = useState(null);
+  const [socketInstance, setSocketInstance] = useState(null);
 
   // Connection references & view locks
   const socketRef = useRef(null);
@@ -233,6 +235,7 @@ export default function ChatRoom() {
   useEffect(() => {
     const socket = initSocket();
     socketRef.current = socket;
+    setSocketInstance(socket);
     socket.connect();
 
     const savedKey = sessionStorage.getItem(`accesskey_chat_${roomName}`) || '';
@@ -583,9 +586,12 @@ export default function ChatRoom() {
                 id="sidebar-toggle"
                 className="mobile-only-btn"
                 onClick={() => setMobileSidebarOpen(prev => !prev)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                <Users size={14} style={{ marginRight: '4px' }} />
-                {users.length}
+                <Users size={14} />
+                <span style={{ opacity: 0.5 }}>|</span>
+                <PhoneCall size={14} />
+                <span>Users & Call ({users.length})</span>
               </button>
             </div>
           </div>
@@ -754,7 +760,7 @@ export default function ChatRoom() {
           )}
         </div>
 
-        {/* Sidebar list of users */}
+        {/* Sidebar list of users + call widget */}
         <aside className={`chat-sidebar ${mobileSidebarOpen ? 'active' : ''}`}>
           <div className="sidebar-header">
             <h4>Users in Room ({users.length})</h4>
@@ -762,6 +768,18 @@ export default function ChatRoom() {
               <X size={18} />
             </button>
           </div>
+
+          {/* Voice & Video Call widget */}
+          {socketInstance && (
+            <div style={{ padding: '10px 12px 4px' }}>
+              <WebRTCCallWidget
+                projectName={roomName}
+                socket={socketInstance}
+                username={username}
+              />
+            </div>
+          )}
+
           <ul className="user-list">
             {users.map((user, i) => {
               const isMe = user.username === username;

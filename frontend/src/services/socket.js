@@ -49,3 +49,23 @@ export function initSocket() {
   });
 }
 
+/**
+ * Sets a client-side session cookie that persists until the browser is closed.
+ * @param {string} name - Cookie name
+ * @param {string} value - Cookie value
+ */
+export function setCookie(name, value) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; SameSite=Lax`;
+}
+
+/**
+ * Deletes a client-side cookie.
+ * @param {string} name - Cookie name
+ */
+export function deleteCookie(name) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax`;
+}
+
+
