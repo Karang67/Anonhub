@@ -524,26 +524,7 @@ app.post('/api/admin/logout', requireAdminAuth, (req, res) => {
 // Utility Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Rate Limiters
-// ─────────────────────────────────────────────────────────────────────────────
-const makeRateLimiter = (windowMs, max, message) => rateLimit({
-    windowMs,
-    max,
-    standardHeaders: true,
-    legacyHeaders: false,
-    // Skip X-Forwarded-For validation errors in dev; trust proxy handles this in prod
-    validate: { xForwardedForHeader: false },
-    message: { error: message }
-});
-
-const apiLimiter = makeRateLimiter(60_000, 60, 'Too many requests. Please slow down.');
-const compileLimiter = makeRateLimiter(60_000, 10, 'Compile rate limit exceeded. Max 10 per minute.');
-const aiChatLimiter = makeRateLimiter(60_000, 15, 'AI chat rate limit exceeded. Max 15 per minute.');
-const uploadLimiter = makeRateLimiter(60_000, 10, 'Upload rate limit exceeded. Max 10 per minute.');
-const authLimiter = makeRateLimiter(60_000, 20, 'Too many auth attempts. Max 20 per minute.');
-
-// Apply general API rate limiter to all /api/* routes
-app.use('/api/', apiLimiter);
+// Duplicate rate limiter block removed (defined earlier).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utility Helpers
