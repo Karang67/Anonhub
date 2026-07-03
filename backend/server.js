@@ -29,6 +29,27 @@ const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
 const helmet = require('helmet');
+const compression = require('compression');
+
+// Load local environment variables from root .env file when present.
+// This keeps secrets out of source code and works for local development.
+const envPath = path.resolve(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+    fs.readFileSync(envPath, 'utf8')
+        .split(/\r?\n/)
+        .forEach(line => {
+            const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+            if (!match) return;
+            const [, key, rawValue] = match;
+            if (process.env[key] !== undefined) return;
+            let value = rawValue.trim();
+            if ((value.startsWith('"') && value.endsWith('"')) ||
+                (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+            }
+            process.env[key] = value;
+        });
+}
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
@@ -36,6 +57,8 @@ const cors = require('cors');
 const { body, param, validationResult } = require('express-validator');
 const { compileAndRun } = require('./compiler');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const nodemailer = require('nodemailer');
+const os = require('os');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment & Config
@@ -46,12 +69,111 @@ const IS_PROD = NODE_ENV === 'production';
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/anonhub-db';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+// Mail configuration (optional). If not provided, emails will not be sent.
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = (process.env.SMTP_SECURE === 'true');
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY || '';
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN || '';
+const MAILGUN_BASE_URL = process.env.MAILGUN_BASE_URL || `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}`;
+const MAIL_FROM = process.env.MAIL_FROM || SMTP_USER || `no-reply@${os.hostname()}`;
+// Default admin recipient (falls back to the email you provided)
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'loveinsights880@gmail.com';
+const ADMIN_PAGE_KEY = process.env.ADMIN_PAGE_KEY || 'anonhub-admin-key';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme123';
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'anonhub-secret-key';
+const ADMIN_SESSION_COOKIE = process.env.ADMIN_SESSION_COOKIE || 'anonhub_admin_session';
+const ADMIN_SESSION_MAX_AGE = Number(process.env.ADMIN_SESSION_MAX_AGE || 7 * 24 * 60 * 60 * 1000); // 7 days
+
+let mailTransport = null;
+let mailDeliveryEnabled = false;
+let useMailgunApi = false;
+
+if (MAILGUN_API_KEY && MAILGUN_DOMAIN) {
+    useMailgunApi = true;
+    mailDeliveryEnabled = true;
+    log('info', 'Mailgun API configured for email delivery.');
+} else if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+    mailTransport = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        auth: { user: SMTP_USER, pass: SMTP_PASS }
+    });
+    // Verify transport in background and disable email delivery if auth fails
+    mailTransport.verify()
+        .then(() => {
+            mailDeliveryEnabled = true;
+            log('info', 'SMTP transport verified.');
+        })
+        .catch(err => {
+            mailTransport = null;
+            mailDeliveryEnabled = false;
+            log('warn', 'SMTP transport verification failed; feedback email delivery disabled.', err);
+        });
+} else {
+    log('info', 'Mailgun and SMTP not configured — feedback emails will not be sent. Set MAILGUN_* or SMTP_* env vars to enable.');
+}
+
+function generateAdminSessionToken() {
+    return crypto.createHmac('sha256', ADMIN_SESSION_SECRET)
+        .update(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}`)
+        .digest('hex');
+}
+
+function requireAdminAuth(req, res, next) {
+    const sessionToken = req.cookies[ADMIN_SESSION_COOKIE];
+    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.body.adminKey;
+    if (sessionToken === generateAdminSessionToken() || adminKey === ADMIN_PAGE_KEY) {
+        return next();
+    }
+    return res.status(403).json({ error: 'Unauthorized access.' });
+}
+
+async function sendFeedbackEmail(mailOpts) {
+    if (useMailgunApi) {
+        const form = new URLSearchParams();
+        form.append('from', mailOpts.from);
+        form.append('to', mailOpts.to);
+        form.append('subject', mailOpts.subject);
+        form.append('text', mailOpts.text);
+        form.append('html', mailOpts.html);
+
+        const response = await fetch(`${MAILGUN_BASE_URL}/messages`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Basic ${Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64')}`
+            },
+            body: form
+        });
+
+        if (!response.ok) {
+            const body = await response.text();
+            throw new Error(`Mailgun send failed: ${response.status} ${body}`);
+        }
+
+        return response.text();
+    }
+
+    if (mailTransport) {
+        return mailTransport.sendMail(mailOpts);
+    }
+
+    throw new Error('No mail transport configured.');
+}
 
 // In development: allow ALL origins so any device on the local network can connect.
 // In production: lock down to the comma-separated list in ALLOWED_ORIGINS env var.
 const PROD_ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
     : [];
+
+// Backwards-compatible alias: some older branches reference `ALLOWED_ORIGINS`.
+// Ensure it always exists to avoid ReferenceError during startup.
+const ALLOWED_ORIGINS = PROD_ALLOWED_ORIGINS;
 
 
 // File upload limits
@@ -93,7 +215,7 @@ if (!GEMINI_API_KEY) {
 if (!process.env.MONGODB_URI) {
     log('warn', 'MONGODB_URI is not set — using local MongoDB fallback.');
 }
-if (IS_PROD && ALLOWED_ORIGINS.some(o => o.includes('localhost'))) {
+if (IS_PROD && PROD_ALLOWED_ORIGINS.some(o => o.includes('localhost'))) {
     log('warn', 'Production mode detected but ALLOWED_ORIGINS still contains localhost.');
 }
 
@@ -101,6 +223,7 @@ if (IS_PROD && ALLOWED_ORIGINS.some(o => o.includes('localhost'))) {
 // Gemini AI
 // ─────────────────────────────────────────────────────────────────────────────
 
+const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || 'v1';
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,6 +248,9 @@ const upload = multer({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const app = express();
+
+// Register compression early to compress all text/static responses
+app.use(compression());
 
 // Trust the first proxy hop so express-rate-limit can resolve client IPs
 // from X-Forwarded-For headers without throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
@@ -157,7 +283,12 @@ const io = new Server(server, {
 
 mongoose.connect(MONGO_URI)
     .then(() => log('info', 'Connected to MongoDB.'))
-    .catch(err => log('error', 'Could not connect to MongoDB:', err));
+    .catch(err => {
+        log('error', 'Could not connect to MongoDB:', err);
+        if (IS_PROD) {
+            process.exit(1);
+        }
+    });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Database Schemas & Models
@@ -234,6 +365,19 @@ const Message = mongoose.model('Message', messageSchema);
 const ChatRoom = mongoose.model('ChatRoom', chatRoomSchema);
 const Attachment = mongoose.model('Attachment', attachmentSchema);
 const ProjectVersion = mongoose.model('ProjectVersion', projectVersionSchema);
+
+/**
+ * Feedback Schema — simple store for user feedback submitted via the Help page
+ */
+const feedbackSchema = new mongoose.Schema({
+    name: { type: String, maxlength: 100 },
+    email: { type: String, maxlength: 254 },
+    message: { type: String, required: true, maxlength: 2000 },
+    rating: { type: Number, min: 1, max: 5 },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const Feedback = mongoose.model('Feedback', feedbackSchema);
 
 /**
  * OfficeRoom Schema — access key is stored as a bcrypt hash.
@@ -325,6 +469,32 @@ app.use(cookieParser());
 // Body parsers
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+app.post('/api/admin/login', authLimiter, async (req, res) => {
+    const { username, password } = req.body || {};
+    if (typeof username !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ error: 'Username and password are required.' });
+    }
+
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Invalid credentials.' });
+    }
+
+    const token = generateAdminSessionToken();
+    res.cookie(ADMIN_SESSION_COOKIE, token, {
+        httpOnly: true,
+        secure: IS_PROD,
+        sameSite: 'lax',
+        maxAge: ADMIN_SESSION_MAX_AGE,
+        path: '/'
+    });
+    res.json({ success: true });
+});
+
+app.post('/api/admin/logout', requireAdminAuth, (req, res) => {
+    res.clearCookie(ADMIN_SESSION_COOKIE, { path: '/' });
+    res.json({ success: true });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate Limiters
@@ -500,7 +670,16 @@ app.use((req, res, next) => {
 // Static Files
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.use(express.static(path.join(__dirname, '..', 'frontend', 'dist')));
+const staticPath = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(staticPath, {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html') || filePath.includes('sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+    }
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // In-Memory User Tracking
@@ -639,12 +818,24 @@ app.post('/api/ai-chat',
         const { message, history } = req.body;
         try {
             if (genAI) {
-                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-                const formattedHistory = (history || []).map(msg => ({
-                    role: msg.role === 'user' ? 'user' : 'model',
-                    parts: [{ text: msg.parts?.[0]?.text || msg.text || '' }]
-                }));
-                const chat = model.startChat({ history: formattedHistory });
+                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }, { apiVersion: GEMINI_API_VERSION });
+                let formattedHistory = Array.isArray(history)
+                    ? history.map(msg => ({
+                        role: msg.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: msg.parts?.[0]?.text || msg.text || '' }]
+                    }))
+                    : [];
+
+                formattedHistory = formattedHistory
+                    .filter(entry => entry.parts[0].text.trim().length > 0);
+
+                if (formattedHistory.length === 0 || formattedHistory[0].role !== 'user') {
+                    formattedHistory = [];
+                }
+
+                const chat = formattedHistory.length
+                    ? model.startChat({ history: formattedHistory })
+                    : model.startChat();
                 const result = await chat.sendMessage(message);
                 const response = await result.response;
                 const text = response.text();
@@ -908,6 +1099,78 @@ app.get('/api/versions/:projectName', preventCache, async (req, res) => {
 });
 
 /**
+ * @api {post} /api/feedback Submit user feedback from Help page
+ */
+app.post('/api/feedback',
+    apiLimiter,
+    [
+        body('name').optional().isString().trim().isLength({ max: 100 }).withMessage('Name is too long.'),
+        body('email').optional().isEmail().withMessage('Invalid email address.'),
+        body('message').isString().trim().notEmpty().isLength({ max: 2000 }).withMessage('Message is required and must be under 2000 characters.'),
+        body('rating').optional().isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5.'),
+    ],
+    async (req, res) => {
+        if (!handleValidation(req, res)) return;
+        try {
+            const { name, email, message, rating } = req.body;
+            const fb = new Feedback({ name: name || undefined, email: email || undefined, message, rating: rating || undefined });
+            await fb.save();
+            // Optionally: emit an admin socket event or send an email here.
+            // Only attempt email delivery if a provider is actually enabled.
+            if (ADMIN_EMAIL && mailDeliveryEnabled) {
+                try {
+                    const mailOpts = {
+                        from: MAIL_FROM,
+                        to: ADMIN_EMAIL,
+                        subject: `New feedback received`,
+                        text: `Name: ${fb.name || '—'}\nEmail: ${fb.email || '—'}\nRating: ${fb.rating || '—'}\n\nMessage:\n${fb.message}`,
+                        html: `<p><strong>Name:</strong> ${fb.name || '—'}</p><p><strong>Email:</strong> ${fb.email || '—'}</p><p><strong>Rating:</strong> ${fb.rating || '—'}</p><hr/><p>${(fb.message || '').replace(/\n/g,'<br/>')}</p>`
+                    };
+                    await sendFeedbackEmail(mailOpts);
+                    log('info', 'Feedback email sent to', ADMIN_EMAIL);
+                } catch (err) {
+                    log('warn', 'Feedback email send failed; feedback stored without notification.', err);
+                }
+            } else {
+                log('debug', 'Email delivery disabled or not configured; feedback saved only to the database.');
+            }
+            res.json({ success: true });
+        } catch (err) {
+            log('error', 'Failed to save feedback:', err);
+            res.status(500).json({ error: 'Failed to save feedback.' });
+        }
+    }
+);
+
+app.get('/api/admin/feedback', preventCache, requireAdminAuth, async (req, res) => {
+    try {
+        const feedback = await Feedback.find().sort({ createdAt: -1 }).limit(200).lean().exec();
+        res.json(feedback.map(item => ({
+            id: item._id,
+            name: item.name || 'Anonymous',
+            email: item.email || 'N/A',
+            rating: item.rating || null,
+            message: item.message,
+            createdAt: item.createdAt,
+        })));
+    } catch (err) {
+        log('error', 'Admin feedback list error:', err);
+        res.status(500).json({ error: 'Failed to load feedback.' });
+    }
+});
+
+app.get('/api/admin/feedback/status', preventCache, requireAdminAuth, (req, res) => {
+    res.json({
+        emailDeliveryEnabled: mailDeliveryEnabled,
+        emailProvider: useMailgunApi ? 'mailgun' : (mailTransport ? 'smtp' : 'none'),
+        adminEmail: ADMIN_EMAIL,
+        message: mailDeliveryEnabled
+            ? 'Email notifications are enabled.'
+            : 'Email notifications are disabled. Feedback is still stored in the database.'
+    });
+});
+
+/**
  * @api {get} /api/versions/:id/content  Get specific version content
  */
 app.get('/api/versions/:id/content', preventCache, async (req, res) => {
@@ -1053,6 +1316,7 @@ io.on('connection', (socket) => {
 
         try {
             let chatRoom = await ChatRoom.findOne({ name: room });
+            let newlyCreated = false;
             if (!chatRoom) {
                 if (accessKey && accessKey.length >= MIN_KEY_LEN) {
                     const ownerToken = crypto.randomBytes(32).toString('hex');
@@ -1060,6 +1324,7 @@ io.on('connection', (socket) => {
                     chatRoom = new ChatRoom({ name: room, accessKey: hashedKey, ownerToken });
                     await chatRoom.save();
                     socket.emit('set owner token', ownerToken);
+                    newlyCreated = true;
                 } else {
                     socket.emit('access denied', { room, type: 'chat', message: 'Access key required' });
                     return;
@@ -1080,7 +1345,9 @@ io.on('connection', (socket) => {
             let currentOwnerToken = chatRoom.ownerToken;
             let isOwner = false;
 
-            if (!currentOwnerToken) {
+            if (newlyCreated) {
+                isOwner = true;
+            } else if (!currentOwnerToken) {
                 // Legacy: generate ownerToken for rooms created before this update
                 currentOwnerToken = crypto.randomBytes(32).toString('hex');
                 await ChatRoom.updateOne({ name: room }, { ownerToken: currentOwnerToken });
@@ -1476,11 +1743,15 @@ io.on('connection', (socket) => {
     });
 
     // ─── WebRTC Signaling events ─────────────────────────────────────────────
-    socket.on('webrtc-join-call', ({ projectName }) => {
+    socket.on('webrtc-join-call', ({ projectName }, callback) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
-        if (!name) return;
+        if (!name) {
+            if (typeof callback === 'function') callback({ error: 'Invalid room name' });
+            return;
+        }
         socket.join(`${name}-webrtc`);
         socket.to(`${name}-webrtc`).emit('webrtc-user-joined', { socketId: socket.id, username: activeUsers.get(socket.id)?.username });
+        if (typeof callback === 'function') callback({ success: true });
     });
 
     socket.on('webrtc-leave-call', ({ projectName }) => {
@@ -1595,6 +1866,36 @@ io.on('connection', (socket) => {
         } catch (err) {
             log('error', 'Kanban update error:', err);
         }
+    });
+
+    // ─── Event: office group chat message ──────────────────────────────────
+
+    socket.on('send chat message', ({ officeName, msg }) => {
+        if (!checkSocketRateLimit(socket.id, 'send chat message', 30, 10_000)) {
+            socket.emit('error', 'You are sending messages too fast. Please slow down.');
+            return;
+        }
+        const name = String(officeName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name || !msg) return;
+        const userData = activeUsers.get(socket.id);
+        // Accept if tracked in userData.rooms OR if the socket is already in the room (mobile reconnect edge case)
+        const inRoom = (userData && userData.rooms.has(name)) || socket.rooms.has(name);
+        if (!inRoom) {
+            log('warn', `[send chat message] Socket ${socket.id} not in room "${name}" — dropping.`);
+            return;
+        }
+
+        const safeMsg = String(msg).trim().slice(0, MAX_MESSAGE_LEN);
+        if (!safeMsg) return;
+
+        const chatMsg = {
+            username: (userData && userData.username) || 'Anonymous',
+            msg: safeMsg,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        // Broadcast to everyone in the room including the sender
+        io.to(name).emit('chat message', chatMsg);
     });
 
     // ─── Event: add reaction ─────────────────────────────────────────────────
@@ -1781,6 +2082,8 @@ io.on('connection', (socket) => {
             log('info', `Socket disconnected: "${userData.username}"`);
             userData.rooms.forEach(room => {
                 io.to(room).emit('chat message', { username: 'System', msg: `${userData.username} has left.` });
+                // Clean up WebRTC signaling room
+                io.to(`${room}-webrtc`).emit('webrtc-user-left', { socketId: socket.id });
                 updateRoomUsers(room);
             });
             activeUsers.delete(socket.id);
