@@ -524,6 +524,8 @@ app.post('/api/admin/logout', requireAdminAuth, (req, res) => {
 // Utility Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Rate Limiters
+// ─────────────────────────────────────────────────────────────────────────────
 const makeRateLimiter = (windowMs, max, message) => rateLimit({
     windowMs,
     max,
