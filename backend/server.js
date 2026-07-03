@@ -67,7 +67,8 @@ const os = require('os');
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PROD = NODE_ENV === 'production';
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/anonhub-db';
+// Support both `MONGODB_URI` (preferred) and legacy `MONGO_URI` env var names.
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/anonhub-db';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Mail configuration (optional). If not provided, emails will not be sent.
 const SMTP_HOST = process.env.SMTP_HOST || '';
