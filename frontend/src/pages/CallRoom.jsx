@@ -148,7 +148,8 @@ export default function CallRoom() {
   const peersRef = useRef({});    // { socketId: RTCPeerConnection }
   const streamsRef = useRef({});   // { socketId: MediaStream }
   const screenStreamRef = useRef(null);
-  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
+  const candidateQueues = useRef({}); // { socketId: RTCIceCandidate[] }
+  const makingOfferRef = useRef({}); // { socketId: boolean } for Perfect Negotiation
 
   // ── Attach local stream via ref callback — fires the moment the DOM node mounts ─
   const localVideoRefCallback = useCallback((node) => {
@@ -227,6 +228,10 @@ export default function CallRoom() {
   const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC ICE State] ${peerName} (${peerSocketId}):`, pc.iceConnectionState);
+    };
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit('webrtc-signal', {
@@ -238,6 +243,7 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
+      console.log(`[WebRTC Track Received] ${peerName} (${peerSocketId}):`, event.track.kind, event.streams);
       let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
       if (!stream) {
         if (!streamsRef.current[peerSocketId]) {
@@ -265,6 +271,7 @@ export default function CallRoom() {
     pc.onnegotiationneeded = async () => {
       if (isInitiator) {
         try {
+          makingOfferRef.current[peerSocketId] = true;
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit('webrtc-signal', {
@@ -274,6 +281,8 @@ export default function CallRoom() {
           });
         } catch (err) {
           console.error('Negotiation error:', err);
+        } finally {
+          makingOfferRef.current[peerSocketId] = false;
         }
       }
     };
@@ -416,18 +425,6 @@ export default function CallRoom() {
       if (!peersRef.current[sid]) {
         const pc = createPeerConnection(sid, peerName, true, socket);
         peersRef.current[sid] = pc;
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: sid,
-            username: username || 'Participant',
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Failed to create SDP offer for joined user:', err);
-        }
       }
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
@@ -444,6 +441,15 @@ export default function CallRoom() {
       }
       try {
         if (signal.sdp) {
+          const isOffer = signal.sdp.type === 'offer';
+          const offerCollision = isOffer && (makingOfferRef.current[senderId] || pc.signalingState !== 'stable');
+          const isPolite = false; // Initiator is impolite, receiver is polite
+
+          if (offerCollision && !isPolite) {
+            console.log('[WebRTC Perfect Negotiation] Glare detected, ignoring offer from polite peer:', senderId);
+            return;
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
           
           // Flush candidate queue
@@ -454,7 +460,7 @@ export default function CallRoom() {
           }
           candidateQueues.current[senderId] = [];
 
-          if (signal.sdp.type === 'offer') {
+          if (isOffer) {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             socket.emit('webrtc-signal', {

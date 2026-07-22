@@ -64,10 +64,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const localVideoRef = useRef(null);
   const peersRef = useRef({}); // { socketId: RTCPeerConnection }
   const streamsRef = useRef({}); // { socketId: MediaStream }
-  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
-  const screenStreamRef = useRef(null);
+  const candidateQueues = useRef({}); // { socketId: RTCIceCandidate[] }
   const reconnectTimeoutRef = useRef(null);
   const reconnectionAttempts = useRef(0);
+  const makingOfferRef = useRef({}); // { socketId: boolean } for Perfect Negotiation
   const maxReconnectAttempts = 5;
 
   const localVideoRefCallback = useCallback((node) => {
@@ -167,6 +167,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const createPeerConnection = (peerSocketId, peerName, isInitiator) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC ICE State] ${peerName} (${peerSocketId}):`, pc.iceConnectionState);
+    };
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit('webrtc-signal', {
@@ -178,6 +182,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     pc.ontrack = (event) => {
+      console.log(`[WebRTC Track Received] ${peerName} (${peerSocketId}):`, event.track.kind, event.streams);
       let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
       if (!stream) {
         if (!streamsRef.current[peerSocketId]) {
@@ -206,6 +211,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     pc.onnegotiationneeded = async () => {
       if (isInitiator) {
         try {
+          makingOfferRef.current[peerSocketId] = true;
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit('webrtc-signal', {
@@ -215,6 +221,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           });
         } catch (err) {
           console.error('Negotiation error:', err);
+        } finally {
+          makingOfferRef.current[peerSocketId] = false;
         }
       }
     };
@@ -284,18 +292,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (!peersRef.current[socketId]) {
         const pc = createPeerConnection(socketId, peerName, true);
         peersRef.current[socketId] = pc;
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: socketId,
-            username: username || 'Participant',
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Failed to create SDP offer for joined user:', err);
-        }
       }
     };
 
@@ -310,6 +306,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
       try {
         if (signal.sdp) {
+          const isOffer = signal.sdp.type === 'offer';
+          const offerCollision = isOffer && (makingOfferRef.current[senderId] || pc.signalingState !== 'stable');
+          const isPolite = false; // Initiator is impolite, receiver is polite
+
+          if (offerCollision && !isPolite) {
+            console.log('[WebRTC Perfect Negotiation] Glare detected, ignoring offer from polite peer:', senderId);
+            return;
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
           // Flush queued candidates
@@ -320,7 +325,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           }
           candidateQueues.current[senderId] = [];
 
-          if (signal.sdp.type === 'offer') {
+          if (isOffer) {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             socket.emit('webrtc-signal', {
