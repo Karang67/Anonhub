@@ -171,6 +171,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (event.candidate && socket) {
         socket.emit('webrtc-signal', {
           targetId: peerSocketId,
+          username: username || 'Participant',
           signal: { candidate: event.candidate }
         });
       }
@@ -200,6 +201,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           await pc.setLocalDescription(offer);
           socket.emit('webrtc-signal', {
             targetId: peerSocketId,
+            username: username || 'Participant',
             signal: { sdp: pc.localDescription }
           });
         } catch (err) {
@@ -279,6 +281,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           await pc.setLocalDescription(offer);
           socket.emit('webrtc-signal', {
             targetId: socketId,
+            username: username || 'Participant',
             signal: { sdp: pc.localDescription }
           });
         } catch (err) {
@@ -287,11 +290,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       }
     };
 
-    const handleSignal = async ({ senderId, signal }) => {
+    const handleSignal = async ({ senderId, signal, username: senderUsername }) => {
       let pc = peersRef.current[senderId];
+      const peerName = senderUsername || 'Participant';
 
       if (!pc) {
-        pc = createPeerConnection(senderId, 'Anonymous participant', false);
+        pc = createPeerConnection(senderId, peerName, false);
         peersRef.current[senderId] = pc;
       }
 
@@ -312,6 +316,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             await pc.setLocalDescription(answer);
             socket.emit('webrtc-signal', {
               targetId: senderId,
+              username: username || 'Participant',
               signal: { sdp: pc.localDescription }
             });
           }
@@ -561,18 +566,31 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
 function VideoCard({ peer, isMicMuted }) {
   const videoRef = useRef(null);
+  const [hasVideo, setHasVideo] = useState(false);
 
   const videoRefCallback = useCallback((node) => {
     videoRef.current = node;
     if (node && peer.stream) {
       node.srcObject = peer.stream;
+      node.play().catch(() => {});
     }
   }, [peer.stream]);
 
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
+    if (!peer.stream) {
+      setHasVideo(false);
+      return;
     }
+
+    const checkVideo = () => {
+      const videoTracks = peer.stream.getVideoTracks();
+      const isLive = videoTracks.length > 0 && videoTracks.some(t => t.enabled && t.readyState === 'live');
+      setHasVideo(isLive);
+    };
+
+    checkVideo();
+    const interval = setInterval(checkVideo, 1000);
+    return () => clearInterval(interval);
   }, [peer.stream]);
 
   return (
@@ -581,9 +599,10 @@ function VideoCard({ peer, isMicMuted }) {
         ref={videoRefCallback} 
         autoPlay 
         playsInline 
-        className="video-element"
+        className={`video-element ${!hasVideo ? 'hidden' : ''}`}
+        style={{ display: hasVideo ? 'block' : 'none' }}
       />
-      {!peer.stream && (
+      {!hasVideo && (
         <div className="video-avatar-placeholder">
           <div
             className="video-initials-circle"
