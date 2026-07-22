@@ -61,11 +61,31 @@ function getInitials(name) {
 // ─── Remote Video Tile ────────────────────────────────────────────────────────
 function RemoteVideoTile({ peer, micMutedMap }) {
   const videoRef = useRef(null);
+  const [hasVideo, setHasVideo] = useState(false);
+
+  const videoRefCallback = useCallback((node) => {
+    videoRef.current = node;
+    if (node && peer.stream) {
+      node.srcObject = peer.stream;
+      node.play().catch(() => {});
+    }
+  }, [peer.stream]);
 
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
+    if (!peer.stream) {
+      setHasVideo(false);
+      return;
     }
+
+    const checkVideo = () => {
+      const videoTracks = peer.stream.getVideoTracks();
+      const isLive = videoTracks.length > 0 && videoTracks.some(t => t.enabled && t.readyState === 'live');
+      setHasVideo(isLive);
+    };
+
+    checkVideo();
+    const interval = setInterval(checkVideo, 1000);
+    return () => clearInterval(interval);
   }, [peer.stream]);
 
   const isMuted = micMutedMap?.[peer.socketId];
@@ -73,20 +93,20 @@ function RemoteVideoTile({ peer, micMutedMap }) {
   return (
     <div className="callroom-video-tile remote-tile">
       <video
-        ref={videoRef}
+        ref={videoRefCallback}
         autoPlay
         playsInline
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          display: 'block',
+          display: hasVideo ? 'block' : 'none',
           background: '#0d0f1a',
           position: 'absolute',
           inset: 0,
         }}
       />
-      {!peer.stream && (
+      {!hasVideo && (
         <div className="callroom-video-avatar">
           <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
           <div className="callroom-avatar-name">{peer.username}</div>
@@ -209,7 +229,11 @@ export default function CallRoom() {
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
-        socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { candidate: event.candidate } });
+        socket.emit('webrtc-signal', {
+          targetId: peerSocketId,
+          username: username || 'Participant',
+          signal: { candidate: event.candidate }
+        });
       }
     };
 
@@ -233,7 +257,11 @@ export default function CallRoom() {
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { sdp: pc.localDescription } });
+          socket.emit('webrtc-signal', {
+            targetId: peerSocketId,
+            username: username || 'Participant',
+            signal: { sdp: pc.localDescription }
+          });
         } catch (err) {
           console.error('Negotiation error:', err);
         }
@@ -384,6 +412,7 @@ export default function CallRoom() {
           await pc.setLocalDescription(offer);
           socket.emit('webrtc-signal', {
             targetId: sid,
+            username: username || 'Participant',
             signal: { sdp: pc.localDescription }
           });
         } catch (err) {
@@ -396,10 +425,11 @@ export default function CallRoom() {
       });
     });
 
-    socket.on('webrtc-signal', async ({ senderId, signal }) => {
+    socket.on('webrtc-signal', async ({ senderId, signal, username: senderUsername }) => {
       let pc = peersRef.current[senderId];
+      const peerName = senderUsername || 'Participant';
       if (!pc) {
-        pc = createPeerConnection(senderId, 'Participant', false, socket);
+        pc = createPeerConnection(senderId, peerName, false, socket);
         peersRef.current[senderId] = pc;
       }
       try {
@@ -417,7 +447,11 @@ export default function CallRoom() {
           if (signal.sdp.type === 'offer') {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            socket.emit('webrtc-signal', { targetId: senderId, signal: { sdp: pc.localDescription } });
+            socket.emit('webrtc-signal', {
+              targetId: senderId,
+              username: username || 'Participant',
+              signal: { sdp: pc.localDescription }
+            });
           }
         } else if (signal.candidate) {
           const candidate = new RTCIceCandidate(signal.candidate);
