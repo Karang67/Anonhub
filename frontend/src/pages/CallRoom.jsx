@@ -121,12 +121,13 @@ export default function CallRoom() {
   const screenStreamRef = useRef(null);
   const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
 
-  // ── Attach local stream to video element once inCall is true ─────────────────
-  useEffect(() => {
-    if (inCall && localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
+  // ── Attach local stream via ref callback — fires the moment the DOM node mounts ─
+  const localVideoRefCallback = useCallback((node) => {
+    localVideoRef.current = node;
+    if (node && localStreamRef.current) {
+      node.srcObject = localStreamRef.current;
     }
-  }, [inCall]);
+  }, []);
 
   // ── Chat sidebar ─────────────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -470,7 +471,14 @@ export default function CallRoom() {
       localStreamRef.current = stream;
       setVideoMuted(false);
       setMicMuted(false);
-      setInCall(true); // useEffect will attach stream to video ref after render
+      setInCall(true);
+      // Fallback: ensure srcObject is set after React commits the video element
+      requestAnimationFrame(() => {
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play().catch(() => {});
+        }
+      });
       socketRef.current?.emit('webrtc-join-call', { projectName: roomName });
     } catch (err) {
       console.error('getUserMedia error:', err);
@@ -669,7 +677,7 @@ export default function CallRoom() {
             {/* Local video tile */}
             <div className={`callroom-video-tile local-tile ${screenSharing ? 'sharing-screen' : ''}`}>
               <video
-                ref={localVideoRef}
+                ref={localVideoRefCallback}
                 autoPlay
                 playsInline
                 muted
