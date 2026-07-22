@@ -1394,6 +1394,52 @@ export default function ProjectRoom() {
       }, 300);
     };
 
+    // ── Infinite Canvas Pan & Zoom Handlers ──
+    canvas.on('mouse:wheel', (opt) => {
+      const delta = opt.e.deltaY;
+      let zoom = canvas.getZoom();
+      zoom *= 0.999 ** delta;
+      if (zoom > 10) zoom = 10;
+      if (zoom < 0.1) zoom = 0.1;
+      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
+
+    canvas.on('mouse:down', (opt) => {
+      const evt = opt.e;
+      if (evt.altKey || evt.button === 1) {
+        canvas.isDragging = true;
+        canvas.selection = false;
+        canvas.lastPosX = evt.clientX;
+        canvas.lastPosY = evt.clientY;
+      }
+    });
+
+    canvas.on('mouse:move', (opt) => {
+      if (canvas.isDragging) {
+        const e = opt.e;
+        const vpt = canvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += e.clientX - canvas.lastPosX;
+          vpt[5] += e.clientY - canvas.lastPosY;
+          canvas.requestRenderAll();
+        }
+        canvas.lastPosX = e.clientX;
+        canvas.lastPosY = e.clientY;
+      }
+    });
+
+    canvas.on('mouse:up', () => {
+      if (canvas.isDragging) {
+        if (canvas.viewportTransform) {
+          canvas.setViewportTransform(canvas.viewportTransform);
+        }
+        canvas.isDragging = false;
+        canvas.selection = true;
+      }
+    });
+
     // Attach events to record state snapshots and dispatch changes
     canvas.on('path:created', () => {
       if (!isRemoteCanvasChangeRef.current && !isUndoingRedoingRef.current) saveCanvasState();
