@@ -61,39 +61,19 @@ function getInitials(name) {
 // ─── Remote Video Tile ────────────────────────────────────────────────────────
 function RemoteVideoTile({ peer, micMutedMap }) {
   const videoRef = useRef(null);
-  const [hasVideo, setHasVideo] = useState(false);
-
-  const videoRefCallback = useCallback((node) => {
-    videoRef.current = node;
-    if (node && peer.stream) {
-      node.srcObject = peer.stream;
-      node.play().catch(() => {});
-    }
-  }, [peer.stream]);
 
   useEffect(() => {
-    if (!peer.stream) {
-      setHasVideo(false);
-      return;
+    if (videoRef.current && peer.stream) {
+      videoRef.current.srcObject = peer.stream;
     }
-
-    const checkVideo = () => {
-      const videoTracks = peer.stream.getVideoTracks();
-      const isLive = videoTracks.length > 0 && videoTracks.some(t => t.enabled && t.readyState === 'live');
-      setHasVideo(isLive);
-    };
-
-    checkVideo();
-    const interval = setInterval(checkVideo, 1000);
-    return () => clearInterval(interval);
   }, [peer.stream]);
 
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
-    <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
+    <div className="callroom-video-tile remote-tile">
       <video
-        ref={videoRefCallback}
+        ref={videoRef}
         autoPlay
         playsInline
         style={{
@@ -106,13 +86,13 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           inset: 0,
         }}
       />
-      {!hasVideo && (
-        <div className="callroom-video-avatar" style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
+      {!peer.stream && (
+        <div className="callroom-video-avatar">
           <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
           <div className="callroom-avatar-name">{peer.username}</div>
         </div>
       )}
-      <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
+      <div className="callroom-participant-badge">
         <span className={`callroom-mic-indicator ${isMuted ? 'muted' : ''}`}>
           {isMuted ? <MicOff size={10} /> : <Mic size={10} />}
         </span>
@@ -148,8 +128,7 @@ export default function CallRoom() {
   const peersRef = useRef({});    // { socketId: RTCPeerConnection }
   const streamsRef = useRef({});   // { socketId: MediaStream }
   const screenStreamRef = useRef(null);
-  const candidateQueues = useRef({}); // { socketId: RTCIceCandidate[] }
-  const makingOfferRef = useRef({}); // { socketId: boolean } for Perfect Negotiation
+  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
 
   // ── Attach local stream via ref callback — fires the moment the DOM node mounts ─
   const localVideoRefCallback = useCallback((node) => {
@@ -228,61 +207,35 @@ export default function CallRoom() {
   const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`[WebRTC ICE State] ${peerName} (${peerSocketId}):`, pc.iceConnectionState);
-    };
-
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
-        socket.emit('webrtc-signal', {
-          targetId: peerSocketId,
-          username: username || 'Participant',
-          signal: { candidate: event.candidate }
-        });
+        socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { candidate: event.candidate } });
       }
     };
 
     pc.ontrack = (event) => {
-      console.log(`[WebRTC Track Received] ${peerName} (${peerSocketId}):`, event.track.kind, event.streams);
-      let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
-      if (!stream) {
-        if (!streamsRef.current[peerSocketId]) {
-          streamsRef.current[peerSocketId] = new MediaStream();
-        }
-        streamsRef.current[peerSocketId].addTrack(event.track);
-        stream = streamsRef.current[peerSocketId];
-      } else {
-        streamsRef.current[peerSocketId] = stream;
-      }
-
-      const activeStream = streamsRef.current[peerSocketId];
-
+      const remoteStream = event.streams[0];
+      streamsRef.current[peerSocketId] = remoteStream;
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
+        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: activeStream };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName, stream: activeStream }];
+        return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
       });
     };
 
     pc.onnegotiationneeded = async () => {
       if (isInitiator) {
         try {
-          makingOfferRef.current[peerSocketId] = true;
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: peerSocketId,
-            username: username || 'Participant',
-            signal: { sdp: pc.localDescription }
-          });
+          socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { sdp: pc.localDescription } });
         } catch (err) {
           console.error('Negotiation error:', err);
-        } finally {
-          makingOfferRef.current[peerSocketId] = false;
         }
       }
     };
@@ -303,7 +256,7 @@ export default function CallRoom() {
     localStreamRef.current = null;
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current = null;
-    Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch {} });
+    Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch { } });
     peersRef.current = {};
     streamsRef.current = {};
     candidateQueues.current = {};
@@ -425,6 +378,17 @@ export default function CallRoom() {
       if (!peersRef.current[sid]) {
         const pc = createPeerConnection(sid, peerName, true, socket);
         peersRef.current[sid] = pc;
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-signal', {
+            targetId: sid,
+            signal: { sdp: pc.localDescription }
+          });
+        } catch (err) {
+          console.error('Failed to create SDP offer for joined user:', err);
+        }
       }
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
@@ -432,47 +396,33 @@ export default function CallRoom() {
       });
     });
 
-    socket.on('webrtc-signal', async ({ senderId, signal, username: senderUsername }) => {
+    socket.on('webrtc-signal', async ({ senderId, signal }) => {
       let pc = peersRef.current[senderId];
-      const peerName = senderUsername || 'Participant';
       if (!pc) {
-        pc = createPeerConnection(senderId, peerName, false, socket);
+        pc = createPeerConnection(senderId, 'Participant', false, socket);
         peersRef.current[senderId] = pc;
       }
       try {
         if (signal.sdp) {
-          const isOffer = signal.sdp.type === 'offer';
-          const offerCollision = isOffer && (makingOfferRef.current[senderId] || pc.signalingState !== 'stable');
-          const isPolite = false; // Initiator is impolite, receiver is polite
-
-          if (offerCollision && !isPolite) {
-            console.log('[WebRTC Perfect Negotiation] Glare detected, ignoring offer from polite peer:', senderId);
-            return;
-          }
-
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-          
+
           // Flush candidate queue
           const queue = candidateQueues.current[senderId] || [];
           while (queue.length > 0) {
             const cand = queue.shift();
-            await pc.addIceCandidate(cand).catch(() => {});
+            await pc.addIceCandidate(cand).catch(() => { });
           }
           candidateQueues.current[senderId] = [];
 
-          if (isOffer) {
+          if (signal.sdp.type === 'offer') {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            socket.emit('webrtc-signal', {
-              targetId: senderId,
-              username: username || 'Participant',
-              signal: { sdp: pc.localDescription }
-            });
+            socket.emit('webrtc-signal', { targetId: senderId, signal: { sdp: pc.localDescription } });
           }
         } else if (signal.candidate) {
           const candidate = new RTCIceCandidate(signal.candidate);
           if (pc.remoteDescription && pc.remoteDescription.type) {
-            await pc.addIceCandidate(candidate).catch(() => {});
+            await pc.addIceCandidate(candidate).catch(() => { });
           } else {
             if (!candidateQueues.current[senderId]) {
               candidateQueues.current[senderId] = [];
@@ -487,7 +437,7 @@ export default function CallRoom() {
 
     socket.on('webrtc-user-left', ({ socketId: sid }) => {
       if (peersRef.current[sid]) {
-        try { peersRef.current[sid].close(); } catch {}
+        try { peersRef.current[sid].close(); } catch { }
         delete peersRef.current[sid];
       }
       delete streamsRef.current[sid];
@@ -546,7 +496,7 @@ export default function CallRoom() {
       requestAnimationFrame(() => {
         if (localVideoRef.current && localStreamRef.current) {
           localVideoRef.current.srcObject = localStreamRef.current;
-          localVideoRef.current.play().catch(() => {});
+          localVideoRef.current.play().catch(() => { });
         }
       });
       socketRef.current?.emit('webrtc-join-call', { projectName: roomName });
@@ -586,7 +536,7 @@ export default function CallRoom() {
   const replaceVideoTrack = (newTrack) => {
     Object.values(peersRef.current).forEach(pc => {
       const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(newTrack).catch(() => {});
+      if (sender) sender.replaceTrack(newTrack).catch(() => { });
     });
     if (localVideoRef.current?.srcObject) {
       const stream = localVideoRef.current.srcObject;
@@ -663,7 +613,7 @@ export default function CallRoom() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="callroom-header">
         <div className="callroom-header-left">
-          <button 
+          <button
             onClick={() => {
               endCallCleanup();
               navigate('/');

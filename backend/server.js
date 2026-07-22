@@ -1768,10 +1768,9 @@ io.on('connection', (socket) => {
         socket.to(`${name}-webrtc`).emit('webrtc-user-left', { socketId: socket.id });
     });
 
-    socket.on('webrtc-signal', ({ targetId, signal, username }) => {
+    socket.on('webrtc-signal', ({ targetId, signal }) => {
         io.to(targetId).emit('webrtc-signal', {
             senderId: socket.id,
-            username: username || activeUsers.get(socket.id)?.username || 'Participant',
             signal
         });
     });
