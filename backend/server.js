@@ -2101,6 +2101,35 @@ io.on('connection', (socket) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Static File Serving & SPA Catch-All (must be AFTER all API routes)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DIST_DIR = path.resolve(__dirname, '..', 'frontend', 'dist');
+
+if (fs.existsSync(DIST_DIR)) {
+    // Serve built React assets (JS, CSS, images, etc.)
+    app.use(express.static(DIST_DIR, {
+        maxAge: IS_PROD ? '1y' : 0,
+        etag: true
+    }));
+
+    // SPA catch-all: any route not matched by API handlers above falls through
+    // to index.html so React Router can handle client-side navigation.
+    // This prevents blank screens when refreshing /about, /chat/room, etc.
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(DIST_DIR, 'index.html'));
+    });
+
+    log('info', `Serving static frontend from: ${DIST_DIR}`);
+} else {
+    log('warn', `Frontend dist folder not found at ${DIST_DIR}. Run "npm run build" in the frontend directory.`);
+    // In development, the Vite dev server handles the frontend separately
+    app.get('*', (req, res) => {
+        res.status(404).json({ error: 'Frontend not built. Run npm run build in the frontend directory.' });
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Global Error Handler
 // ─────────────────────────────────────────────────────────────────────────────
 
