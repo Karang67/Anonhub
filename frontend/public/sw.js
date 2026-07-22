@@ -49,6 +49,30 @@ self.addEventListener('fetch', (event) => {
     return; // Let these go to network directly
   }
 
+  // Use Network-First strategy for the app shell / index.html and navigation requests.
+  // This prevents caching an old index.html referencing deleted hashed chunks on new builds.
+  const isNavigation = event.request.mode === 'navigate' ||
+                       url.pathname === '/' ||
+                       url.pathname === '/index.html';
+
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res && res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return res;
+        })
+        .catch(() => {
+          // If offline, fall back to cache
+          return caches.match(event.request) || caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) {
