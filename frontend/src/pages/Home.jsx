@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import './Home.css';
 import { setCookie } from '../services/socket';
+import PWAInstallPrompt from '../components/PWAInstallPrompt';
 
 /**
  * Home Component
@@ -217,6 +218,7 @@ export default function Home() {
 
   return (
     <div className="homepage-v2-container">
+      <PWAInstallPrompt variant="banner" />
       {/* Hero & App Mockup Section */}
       <section className="homepage-v2-hero-grid">
         {/* Left Column: Headline and Overview Bullets */}

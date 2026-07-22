@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { Menu, X, ChevronDown, MessageSquare, FolderKanban, FileText, Code2, Monitor, Video, Info, HelpCircle, Home } from 'lucide-react';
+import PWAInstallPrompt from './PWAInstallPrompt';
 import './Navbar.css';
 
 /** Dropdown definition: label, icon, and children links */
@@ -158,6 +159,8 @@ export default function Navbar() {
 
       {/* Actions */}
       <div className="header-actions">
+        <PWAInstallPrompt variant="navbar" />
+
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('start-anonhub-tour'))}
           className="theme-toggle-btn tour-btn"

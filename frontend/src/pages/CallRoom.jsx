@@ -61,23 +61,45 @@ function getInitials(name) {
 // ─── Remote Video Tile ────────────────────────────────────────────────────────
 function RemoteVideoTile({ peer, micMutedMap }) {
   const videoRef = useRef(null);
+  const [hasVideo, setHasVideo] = useState(false);
 
-  // useCallback ref: fires immediately when DOM node mounts,
-  // so srcObject is set before autoPlay kicks in
-  const setVideoRef = useCallback((node) => {
-    videoRef.current = node;
-    if (node && peer.stream) {
-      node.srcObject = peer.stream;
-      node.play().catch(() => {});
-    }
-  }, [peer.stream]);
-
-  // Also re-attach when peer.stream changes (new track added)
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      videoRef.current.play().catch(() => {});
+    const stream = peer.stream;
+    const videoEl = videoRef.current;
+
+    const checkVideoTrack = () => {
+      if (stream) {
+        const vTracks = stream.getVideoTracks();
+        const active = vTracks.some(t => t.enabled && t.readyState === 'live');
+        setHasVideo(active);
+      } else {
+        setHasVideo(false);
+      }
+    };
+
+    const attachStream = () => {
+      if (videoEl && stream) {
+        if (videoEl.srcObject !== stream) {
+          videoEl.srcObject = stream;
+        }
+        videoEl.play().catch(() => {});
+      }
+      checkVideoTrack();
+    };
+
+    attachStream();
+
+    if (stream) {
+      stream.addEventListener('addtrack', attachStream);
+      stream.addEventListener('removetrack', attachStream);
     }
+
+    return () => {
+      if (stream) {
+        stream.removeEventListener('addtrack', attachStream);
+        stream.removeEventListener('removetrack', attachStream);
+      }
+    };
   }, [peer.stream]);
 
   const isMuted = micMutedMap?.[peer.socketId];
@@ -85,20 +107,20 @@ function RemoteVideoTile({ peer, micMutedMap }) {
   return (
     <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
       <video
-        ref={setVideoRef}
+        ref={videoRef}
         autoPlay
         playsInline
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          display: 'block',
+          display: hasVideo ? 'block' : 'none',
           background: '#0d0f1a',
           position: 'absolute',
           inset: 0,
         }}
       />
-      {!peer.stream && (
+      {!hasVideo && (
         <div className="callroom-video-avatar" style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#0d0f1a' }}>
           <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
           <div className="callroom-avatar-name">{peer.username}</div>
@@ -226,23 +248,20 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      // Re-use a single persistent MediaStream per peer — never snapshot-copy.
-      // ontrack fires once per track (audio then video), and each track must
-      // be added to the SAME object the <video> element is already playing.
       if (!streamsRef.current[peerSocketId]) {
         streamsRef.current[peerSocketId] = new MediaStream();
       }
       streamsRef.current[peerSocketId].addTrack(event.track);
-      const liveStream = streamsRef.current[peerSocketId];
+      const liveStream = new MediaStream(streamsRef.current[peerSocketId].getTracks());
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: liveStream };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: liveStream };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName, stream: liveStream }];
+        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: liveStream }];
       });
     };
 
@@ -260,7 +279,9 @@ export default function CallRoom() {
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
+        if (track.readyState === 'live') {
+          pc.addTrack(track, localStreamRef.current);
+        }
       });
     }
 
@@ -295,11 +316,8 @@ export default function CallRoom() {
     socket.on('connect', () => {
       setConnected(true);
       setConnectionStatus('connected');
-      // Join the project room for signaling + chat
-      // Backend event: 'join room' (with space), payload: { room, accessKey }
       const savedKey = sessionStorage.getItem(`accesskey_project_${roomName}`) || getCookie(`accesskey_project_${roomName}`);
       socket.emit('join room', { room: roomName, accessKey: savedKey });
-      // Update roster when connected
       setRoster(prev => {
         const selfId = socket.id;
         const already = prev.find(r => r.socketId === selfId);
@@ -322,7 +340,6 @@ export default function CallRoom() {
       setConnectionStatus('reconnection-failed');
     });
 
-    // ── Session persistence: save assigned username to sessionStorage ──
     socket.on('set username', (name) => {
       setUsername(name);
       sessionStorage.setItem('anonhub-username', name);
@@ -335,7 +352,6 @@ export default function CallRoom() {
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
     });
 
-    // ── Roster events ──
     socket.on('user-joined', ({ username: u, socketId: sid }) => {
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
@@ -359,10 +375,8 @@ export default function CallRoom() {
       }]);
     });
 
-    // ── Chat events ──
-    // Backend emits: { username, msg, _id, timestamp } (field is 'msg' not 'message')
     socket.on('chat message', ({ username: u, msg, timestamp }) => {
-      const isSelf = u === username; // compare by username since backend doesn't send socketId
+      const isSelf = u === username;
       setMessages(prev => {
         const id = `msg-${timestamp || Date.now()}-${Math.random()}`;
         return [...prev, {
@@ -379,7 +393,6 @@ export default function CallRoom() {
       }
     });
 
-    // Load historical messages on join
     socket.on('load messages', (msgs) => {
       setMessages(msgs.map(m => ({
         id: m._id || `hist-${m.timestamp}-${Math.random()}`,
@@ -393,11 +406,6 @@ export default function CallRoom() {
 
     // ── WebRTC signaling events ──
     socket.on('webrtc-user-joined', ({ socketId: sid, username: peerName }) => {
-      // IMPORTANT: Do NOT call createOffer() here manually.
-      // createPeerConnection() calls addTrack() internally which fires
-      // onnegotiationneeded, and that handler sends the single correct offer.
-      // A second manual offer here causes SDP glare (both sides stuck in
-      // have-local-offer state) and the connection never establishes.
       if (!peersRef.current[sid]) {
         const pc = createPeerConnection(sid, peerName || 'Participant', true, socket);
         peersRef.current[sid] = pc;
@@ -408,17 +416,21 @@ export default function CallRoom() {
       });
     });
 
-    socket.on('webrtc-signal', async ({ senderId, signal }) => {
+    socket.on('webrtc-signal', async ({ senderId, senderUsername, signal }) => {
+      const peerName = senderUsername || 'Participant';
       let pc = peersRef.current[senderId];
       if (!pc) {
-        pc = createPeerConnection(senderId, 'Participant', false, socket);
+        pc = createPeerConnection(senderId, peerName, false, socket);
         peersRef.current[senderId] = pc;
+      } else if (senderUsername) {
+        setPeers(prev => prev.map(p => p.socketId === senderId ? { ...p, username: senderUsername } : p));
+        setRoster(prev => prev.map(r => r.socketId === senderId ? { ...r, username: senderUsername } : r));
       }
+
       try {
         if (signal.sdp) {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
-          // Flush candidate queue
           const queue = candidateQueues.current[senderId] || [];
           while (queue.length > 0) {
             const cand = queue.shift();
@@ -511,7 +523,16 @@ export default function CallRoom() {
           localVideoRef.current.play().catch(() => { });
         }
       });
-      socketRef.current?.emit('webrtc-join-call', { projectName: roomName });
+      socketRef.current?.emit('webrtc-join-call', { projectName: roomName }, (response) => {
+        if (response && Array.isArray(response.existingPeers)) {
+          response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
+            if (socketRef.current && !peersRef.current[sid]) {
+              const pc = createPeerConnection(sid, peerName || 'Participant', true, socketRef.current);
+              peersRef.current[sid] = pc;
+            }
+          });
+        }
+      });
     } catch (err) {
       console.error('getUserMedia error:', err);
       alert('Camera/microphone access is required to start the call.');

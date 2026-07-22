@@ -116,6 +116,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           console.error('Failed to join call:', response.error);
           alert(`Could not join the call: ${response.error}`);
           endCall();
+        } else if (response && Array.isArray(response.existingPeers)) {
+          response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
+            if (!peersRef.current[sid]) {
+              const pc = createPeerConnection(sid, peerName || 'Participant', true);
+              peersRef.current[sid] = pc;
+            }
+          });
         }
       });
     } catch (err) {
@@ -177,21 +184,20 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     pc.ontrack = (event) => {
-      // Re-use a single persistent MediaStream per peer so srcObject stays live
       if (!streamsRef.current[peerSocketId]) {
         streamsRef.current[peerSocketId] = new MediaStream();
       }
       streamsRef.current[peerSocketId].addTrack(event.track);
-      const liveStream = streamsRef.current[peerSocketId];
+      const liveStream = new MediaStream(streamsRef.current[peerSocketId].getTracks());
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: liveStream };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: liveStream };
           return updated;
         } else {
-          return [...prev, { socketId: peerSocketId, username: peerName, stream: liveStream }];
+          return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: liveStream }];
         }
       });
     };
@@ -213,7 +219,9 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
+        if (track.readyState === 'live') {
+          pc.addTrack(track, localStreamRef.current);
+        }
       });
     }
 
@@ -283,12 +291,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       }
     };
 
-    const handleSignal = async ({ senderId, signal }) => {
+    const handleSignal = async ({ senderId, senderUsername, signal }) => {
+      const peerName = senderUsername || 'Participant';
       let pc = peersRef.current[senderId];
 
       if (!pc) {
-        pc = createPeerConnection(senderId, 'Anonymous participant', false);
+        pc = createPeerConnection(senderId, peerName, false);
         peersRef.current[senderId] = pc;
+      } else if (senderUsername) {
+        setPeers(prev => prev.map(p => p.socketId === senderId ? { ...p, username: senderUsername } : p));
       }
 
       try {
@@ -557,33 +568,63 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
 function VideoCard({ peer, isMicMuted }) {
   const videoRef = useRef(null);
-
-  const videoRefCallback = useCallback((node) => {
-    videoRef.current = node;
-    if (node && peer.stream) {
-      node.srcObject = peer.stream;
-      node.play().catch(() => {});
-    }
-  }, [peer.stream]);
+  const [hasVideo, setHasVideo] = useState(false);
 
   useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      videoRef.current.play().catch(() => {});
+    const stream = peer.stream;
+    const videoEl = videoRef.current;
+
+    const checkVideoTrack = () => {
+      if (stream) {
+        const vTracks = stream.getVideoTracks();
+        const active = vTracks.some(t => t.enabled && t.readyState === 'live');
+        setHasVideo(active);
+      } else {
+        setHasVideo(false);
+      }
+    };
+
+    const attachStream = () => {
+      if (videoEl && stream) {
+        if (videoEl.srcObject !== stream) {
+          videoEl.srcObject = stream;
+        }
+        videoEl.play().catch(() => {});
+      }
+      checkVideoTrack();
+    };
+
+    attachStream();
+
+    if (stream) {
+      stream.addEventListener('addtrack', attachStream);
+      stream.addEventListener('removetrack', attachStream);
     }
+
+    return () => {
+      if (stream) {
+        stream.removeEventListener('addtrack', attachStream);
+        stream.removeEventListener('removetrack', attachStream);
+      }
+    };
   }, [peer.stream]);
 
   return (
     <div className="video-card remote-view" style={{ position: 'relative' }}>
       <video
-        ref={videoRefCallback}
+        ref={videoRef}
         autoPlay
         playsInline
         muted={false}
         className="video-element"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: hasVideo ? 'block' : 'none'
+        }}
       />
-      {!peer.stream && (
+      {!hasVideo && (
         <div className="video-avatar-placeholder" style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#13152a' }}>
           <div
             className="video-initials-circle"

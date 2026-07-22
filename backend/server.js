@@ -1756,10 +1756,23 @@ io.on('connection', (socket) => {
             if (typeof callback === 'function') callback({ error: 'Invalid room name' });
             return;
         }
-        socket.join(`${name}-webrtc`);
+
+        const roomName = `${name}-webrtc`;
+        const roomClients = io.sockets.adapter.rooms.get(roomName);
+        const existingPeers = [];
+        if (roomClients) {
+            roomClients.forEach(clientId => {
+                if (clientId !== socket.id) {
+                    const u = activeUsers.get(clientId)?.username || 'Participant';
+                    existingPeers.push({ socketId: clientId, username: u });
+                }
+            });
+        }
+
+        socket.join(roomName);
         const peerUsername = activeUsers.get(socket.id)?.username || 'Participant';
-        socket.to(`${name}-webrtc`).emit('webrtc-user-joined', { socketId: socket.id, username: peerUsername });
-        if (typeof callback === 'function') callback({ success: true });
+        socket.to(roomName).emit('webrtc-user-joined', { socketId: socket.id, username: peerUsername });
+        if (typeof callback === 'function') callback({ success: true, existingPeers });
     });
 
     socket.on('webrtc-leave-call', ({ projectName }) => {
@@ -1770,8 +1783,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('webrtc-signal', ({ targetId, signal }) => {
+        const senderUsername = activeUsers.get(socket.id)?.username || 'Participant';
         io.to(targetId).emit('webrtc-signal', {
             senderId: socket.id,
+            senderUsername,
             signal
         });
     });
