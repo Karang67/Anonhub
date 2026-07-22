@@ -3941,7 +3941,7 @@ html[data-theme="dark"] .snippets-filter-select {
     transform: scale(0.92);
   }
 
-  .collaboration-sidebar {
+  .project-chat-container {
     position: fixed !important;
     inset: auto 0 0 0 !important;
     width: 100vw !important;
@@ -3960,7 +3960,8 @@ html[data-theme="dark"] .snippets-filter-select {
     overflow: hidden !important;
   }
 
-  .collaboration-sidebar.mobile-open {
+  .project-chat-container.mobile-open {
+    display: flex !important;
     transform: translateY(0) !important;
   }
 

@@ -682,7 +682,11 @@ export default function ProjectRoom() {
     setChatBtnPos({ x: newX, y: newY });
   };
 
-  const handleChatTouchEnd = () => {
+  const handleChatClick = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!isDraggingChatRef.current) {
       setMobileChatOpen(prev => !prev);
     }
@@ -5128,10 +5132,9 @@ export default function ProjectRoom() {
         }}
         onTouchStart={handleChatTouchStart}
         onTouchMove={handleChatTouchMove}
-        onTouchEnd={handleChatTouchEnd}
         onMouseDown={handleChatTouchStart}
         onMouseMove={(e) => { if (e.buttons === 1) handleChatTouchMove(e); }}
-        onMouseUp={handleChatTouchEnd}
+        onClick={handleChatClick}
         title="Toggle Chat"
       >
         <MessageSquare size={22} />
