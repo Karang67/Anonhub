@@ -62,8 +62,11 @@ function DropdownMenu({ item, closeAll }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Close on route change
-  useEffect(() => { setOpen(false); }, [location]);
+  const lastLocationRef = useRef(location.pathname);
+  if (lastLocationRef.current !== location.pathname) {
+    lastLocationRef.current = location.pathname;
+    setOpen(false);
+  }
 
   // Determine if any child is active
   const isAnyChildActive = item.children?.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/'));

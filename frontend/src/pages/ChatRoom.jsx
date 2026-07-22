@@ -241,7 +241,9 @@ export default function ChatRoom() {
     const savedKey = sessionStorage.getItem(`accesskey_chat_${roomName}`) || '';
     accessKeyRef.current = savedKey;
     const ownerToken = localStorage.getItem(`owner_token_chat_${roomName}`)
+      || localStorage.getItem(`owner_token_chat_${roomName.toLowerCase()}`)
       || localStorage.getItem(`owner_token_${roomName}`)
+      || localStorage.getItem(`owner_token_${roomName.toLowerCase()}`)
       || '';
     socket.emit('join room', { room: roomName, accessKey: savedKey, ownerToken });
 
@@ -249,7 +251,9 @@ export default function ChatRoom() {
       setMySocketId(socket.id);
       const currentKey = sessionStorage.getItem(`accesskey_chat_${roomName}`) || '';
       const token = localStorage.getItem(`owner_token_chat_${roomName}`)
+        || localStorage.getItem(`owner_token_chat_${roomName.toLowerCase()}`)
         || localStorage.getItem(`owner_token_${roomName}`)
+        || localStorage.getItem(`owner_token_${roomName.toLowerCase()}`)
         || '';
       socket.emit('join room', { room: roomName, accessKey: currentKey, ownerToken: token });
     });
@@ -289,7 +293,9 @@ export default function ChatRoom() {
 
     socket.on('set owner token', (token) => {
       localStorage.setItem(`owner_token_chat_${roomName}`, token);
+      localStorage.setItem(`owner_token_chat_${roomName.toLowerCase()}`, token);
       localStorage.setItem(`owner_token_${roomName}`, token);
+      localStorage.setItem(`owner_token_${roomName.toLowerCase()}`, token);
     });
 
     socket.on('is owner', (status) => setIsOwner(status));
@@ -453,7 +459,9 @@ export default function ChatRoom() {
   const handleOverlaySubmit = (room, key) => {
     sessionStorage.setItem(`accesskey_chat_${roomName}`, key);
     accessKeyRef.current = key;
-    const token = localStorage.getItem(`owner_token_chat_${roomName}`) || '';
+    const token = localStorage.getItem(`owner_token_chat_${roomName}`)
+      || localStorage.getItem(`owner_token_chat_${roomName.toLowerCase()}`)
+      || '';
     if (socketRef.current) {
       socketRef.current.emit('join room', { room: roomName, accessKey: key, ownerToken: token });
     }
@@ -489,7 +497,6 @@ export default function ChatRoom() {
       {showShareModal && (
         <ShareModal
           roomName={roomName}
-          accessKey={accessKeyRef.current}
           onClose={() => setShowShareModal(false)}
         />
       )}

@@ -45,6 +45,14 @@ export function initSocket() {
       username: savedUsername,
       sessionId: sessionId
     },
+    extraHeaders: {
+      'ngrok-skip-browser-warning': 'true'
+    },
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
     autoConnect: false
   });
 }

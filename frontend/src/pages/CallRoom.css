@@ -50,6 +50,28 @@
   gap: 12px;
 }
 
+.callroom-home-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e8eaf6;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.callroom-home-btn:hover {
+  background: rgba(124, 77, 255, 0.2);
+  border-color: rgba(124, 77, 255, 0.4);
+  color: #c5b3ff;
+  box-shadow: 0 0 10px rgba(124, 77, 255, 0.25);
+  transform: translateY(-1px);
+}
+
 .callroom-logo-dot {
   width: 10px;
   height: 10px;
@@ -191,6 +213,10 @@
 .callroom-video-tile.local-tile {
   border-color: rgba(124, 77, 255, 0.35);
   box-shadow: 0 0 20px rgba(124, 77, 255, 0.15), 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.callroom-video-tile.local-tile:not(.sharing-screen) video {
+  transform: scaleX(-1);
 }
 
 .callroom-video-tile.speaking {
@@ -780,6 +806,10 @@
       "controls";
   }
 
+  .callroom-header {
+    padding: 0 10px;
+  }
+
   .callroom-sidebar {
     position: fixed;
     top: 56px;
@@ -795,11 +825,46 @@
     display: none;
   }
 
+  .callroom-controls {
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .callroom-ctrl-btn {
+    width: 42px;
+    height: 42px;
+  }
+
   .callroom-ctrl-btn-label {
     display: none;
   }
 
+  .callroom-ctrl-divider {
+    height: 20px;
+    margin: 0 2px;
+  }
+
+  /* Optimize portrait screen mesh grids */
+  .callroom-video-mesh[data-count="2"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .callroom-video-mesh[data-count="3"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(3, 1fr);
+  }
+  .callroom-video-mesh[data-count="4"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+  }
+
   .callroom-video-mesh.many-participants {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .callroom-title {
+    display: none !important;
   }
 }

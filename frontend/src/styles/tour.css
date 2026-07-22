@@ -224,6 +224,33 @@ html[data-theme="dark"] .tour-tooltip-card {
   right: 320px;
 }
 
+/* Office Board steps */
+.tour-tooltip-card.office-step-0 {
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.office-step-1 {
+  top: 190px;
+  left: 40px;
+}
+
+.tour-tooltip-card.office-step-2 {
+  top: 190px;
+  left: 120px;
+}
+
+.tour-tooltip-card.office-step-3 {
+  top: 190px;
+  left: 200px;
+}
+
+.tour-tooltip-card.office-step-4 {
+  top: 190px;
+  left: 280px;
+}
+
 /* --- Mobile Viewport Tooltip Overrides --- */
 @media (max-width: 1024px) {
   .tour-tooltip-card.proj-step-5 {

@@ -23,6 +23,8 @@
   --text-color: #334155;
   --text-muted: #64748b;
   --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  --background-color: #f1f5f9;
+  --background-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   --accent-glow: rgba(169, 63, 85, 0.15);
 
   /* Original Neon Accent Colors */
@@ -60,6 +62,8 @@ html[data-theme="dark"] {
   --text-color: #f1f5f9;
   --text-muted: #94a3b8;
   --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+  --background-color: #0b0f19;
+  --background-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
   --accent-glow: rgba(255, 143, 163, 0.15);
   --shadow-glow: 0 0 25px rgba(255, 143, 163, 0.25), 0 0 10px rgba(107, 199, 255, 0.15);
 
@@ -84,6 +88,8 @@ html[data-theme="dracula"] {
   --text-color: #f8f8f2;
   --text-muted: #6272a4;
   --bg-gradient: linear-gradient(135deg, #1e1f29 0%, #282a36 100%);
+  --background-color: #1e1f29;
+  --background-gradient: linear-gradient(135deg, #1e1f29 0%, #282a36 100%);
   --accent-glow: rgba(189, 147, 249, 0.15);
   --shadow-glow: 0 0 20px rgba(189, 147, 249, 0.25);
 }
@@ -101,6 +107,8 @@ html[data-theme="cyberpunk"] {
   --text-color: #00ffcc;
   --text-muted: #888888;
   --bg-gradient: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%);
+  --background-color: #0d0d0d;
+  --background-gradient: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%);
   --accent-glow: rgba(0, 255, 204, 0.2);
   --shadow-glow: 0 0 15px rgba(0, 255, 204, 0.3);
 }
@@ -118,6 +126,8 @@ html[data-theme="ocean"] {
   --text-color: #f0fdfa;
   --text-muted: #64748b;
   --bg-gradient: linear-gradient(135deg, #080e1a 0%, #0f172a 100%);
+  --background-color: #080e1a;
+  --background-gradient: linear-gradient(135deg, #080e1a 0%, #0f172a 100%);
   --accent-glow: rgba(14, 165, 233, 0.15);
   --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.2);
 }
@@ -135,6 +145,8 @@ html[data-theme="midnight"] {
   --text-color: #ffffff;
   --text-muted: #71717a;
   --bg-gradient: linear-gradient(135deg, #000000 0%, #09090b 100%);
+  --background-color: #000000;
+  --background-gradient: linear-gradient(135deg, #000000 0%, #09090b 100%);
   --accent-glow: rgba(250, 250, 250, 0.08);
   --shadow-glow: 0 0 10px rgba(250, 250, 250, 0.1);
 }

@@ -1131,7 +1131,7 @@ app.post('/api/feedback',
                         to: ADMIN_EMAIL,
                         subject: `New feedback received`,
                         text: `Name: ${fb.name || '—'}\nEmail: ${fb.email || '—'}\nRating: ${fb.rating || '—'}\n\nMessage:\n${fb.message}`,
-                        html: `<p><strong>Name:</strong> ${fb.name || '—'}</p><p><strong>Email:</strong> ${fb.email || '—'}</p><p><strong>Rating:</strong> ${fb.rating || '—'}</p><hr/><p>${(fb.message || '').replace(/\n/g,'<br/>')}</p>`
+                        html: `<p><strong>Name:</strong> ${fb.name || '—'}</p><p><strong>Email:</strong> ${fb.email || '—'}</p><p><strong>Rating:</strong> ${fb.rating || '—'}</p><hr/><p>${(fb.message || '').replace(/\n/g, '<br/>')}</p>`
                     };
                     await sendFeedbackEmail(mailOpts);
                     log('info', 'Feedback email sent to', ADMIN_EMAIL);

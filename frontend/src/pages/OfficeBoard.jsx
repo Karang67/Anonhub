@@ -13,7 +13,7 @@ import {
   Table, FileText, CheckSquare, ListTodo, Plus, Trash2, 
   Download, ArrowLeftRight, Edit3, Send, Check, X, 
   Copy, Bold, Italic, Underline, AlignLeft, AlignCenter, 
-  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare
+  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare, HelpCircle
 } from 'lucide-react';
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import './OfficeBoard.css';
@@ -122,9 +122,61 @@ export default function OfficeBoard() {
   const [users, setUsers] = useState([]);
   const [isOwner, setIsOwner] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [tourStep, setTourStep] = useState(-1);
 
   // Main navigation tab
   const [activeTab, setActiveTab] = useState('excel'); // 'excel' | 'word' | 'notes' | 'kanban'
+
+  const steps = [
+    {
+      title: 'Office Suite Guide',
+      body: 'Welcome to the <strong>Office Productivity Suite</strong>! Here you can collaboratively manage spreadsheets, rich word documents, smart markdown notes, and kanban boards.',
+      class: 'office-step-0'
+    },
+    {
+      title: 'Spreadsheet Tab',
+      body: 'The <strong>Spreadsheet</strong> tab features an Excel-like reactive grid supporting formulas (e.g. <code>=A1+B1</code>, <code>=SUM(A1:A5)</code>) and CSV exporting.',
+      class: 'office-step-1'
+    },
+    {
+      title: 'Document Tab',
+      body: 'In the <strong>Word</strong> tab, write rich text documents collaboratively with formatting tools (Bold, Alignments, Lists) and page export configurations.',
+      class: 'office-step-2'
+    },
+    {
+      title: 'Smart Notes Tab',
+      body: 'Use <strong>Smart Notes</strong> to capture raw text dumps and organize them into clear structures instantly using our <strong>AI Organize</strong> copilot tool.',
+      class: 'office-step-3'
+    },
+    {
+      title: 'Kanban Project Board',
+      body: 'Use the <strong>Kanban Board</strong> to track your team progress. Create, edit, and move cards across progress columns.',
+      class: 'office-step-4'
+    }
+  ];
+
+  // Onboarding walkthrough tour logic
+  useEffect(() => {
+    if (!roomName) return;
+    const hasSeenTour = localStorage.getItem('anonhub_office_tour_seen');
+    if (!hasSeenTour) {
+      const t = setTimeout(() => setTourStep(0), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [roomName]);
+
+  // Synchronize navigation tabs when walking through tour steps
+  useEffect(() => {
+    if (tourStep === 1) {
+      setActiveTab('excel');
+    } else if (tourStep === 2) {
+      setActiveTab('word');
+    } else if (tourStep === 3) {
+      setActiveTab('notes');
+    } else if (tourStep === 4) {
+      setActiveTab('kanban');
+    }
+  }, [tourStep]);
 
   // Spreadsheet state (Default rows/cols structure mapping)
   const [sheetRows, setSheetRows] = useState(20);
@@ -186,7 +238,7 @@ export default function OfficeBoard() {
     if (!roomName) return;
 
     // Retrieve cached token if it exists
-    const cachedToken = localStorage.getItem(`anonhub-office-token-${roomName}`);
+    const cachedToken = localStorage.getItem(`anonhub-office-token-${roomName}`) || localStorage.getItem(`anonhub-office-token-${roomName.toLowerCase()}`) || '';
 
     // Instantiating Socket Connection
     const socket = initSocket();
@@ -227,6 +279,7 @@ export default function OfficeBoard() {
 
     socket.on('set owner token', (token) => {
       localStorage.setItem(`anonhub-office-token-${roomName}`, token);
+      localStorage.setItem(`anonhub-office-token-${roomName.toLowerCase()}`, token);
     });
 
     socket.on('room users', (roster) => {
@@ -841,6 +894,14 @@ export default function OfficeBoard() {
           <button className="office-share-btn" onClick={() => setShowShareModal(true)}>
             <Link2 size={14} /> <span className="btn-text">Share Board</span>
           </button>
+          <button 
+            className="office-share-btn" 
+            onClick={() => setTourStep(0)} 
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--accent-glow)', color: 'var(--primary-color)' }}
+            title="Start Onboarding Tour"
+          >
+            <HelpCircle size={14} /> <span className="btn-text">Quick Guide</span>
+          </button>
           <Link to="/" onClick={() => deleteCookie(`accesskey_office_${roomName}`)} className="office-exit-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
             <LogOut size={14} /> <span className="btn-text">Leave Suite</span>
           </Link>
@@ -1339,6 +1400,42 @@ export default function OfficeBoard() {
           </button>
         </form>
       </div>
+
+      {tourStep >= 0 && steps[tourStep] && (
+        <div className={`tour-tooltip-card ${steps[tourStep].class}`}>
+          <div className="tour-tooltip-header">
+            <h4>{steps[tourStep].title}</h4>
+            <span className="tour-tooltip-badge">Step {tourStep + 1} of {steps.length}</span>
+          </div>
+          <div className="tour-tooltip-body">
+            <p dangerouslySetInnerHTML={{ __html: steps[tourStep].body }} />
+          </div>
+          <div className="tour-tooltip-footer">
+            <button
+              className="tour-skip-btn"
+              onClick={() => {
+                localStorage.setItem('anonhub_office_tour_seen', 'true');
+                setTourStep(-1);
+              }}
+            >
+              Skip
+            </button>
+            <button
+              className="tour-next-btn"
+              onClick={() => {
+                if (tourStep < steps.length - 1) {
+                  setTourStep(prev => prev + 1);
+                } else {
+                  localStorage.setItem('anonhub_office_tour_seen', 'true');
+                  setTourStep(-1);
+                }
+              }}
+            >
+              {tourStep === steps.length - 1 ? 'Finish' : 'Next'}
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

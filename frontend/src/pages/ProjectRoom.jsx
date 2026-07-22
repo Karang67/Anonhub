@@ -10,8 +10,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut } from 'lucide-react';
-import { Canvas, Rect, Circle, PencilBrush, Triangle, Line } from 'fabric';
+import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut, MousePointer, Square, Circle as CircleIcon, Triangle as TriangleIcon, Minus, Scissors, Undo, Redo, Eraser, Shapes, Diamond, ArrowRight, Star, Heart, Upload } from 'lucide-react';
+import { Canvas, Rect, Circle, PencilBrush, Triangle, Line, Polygon, Path } from 'fabric';
 import { Editor as TinyMCEEditor } from '@tinymce/tinymce-react';
 import Editor from '@monaco-editor/react';
 import QRCode from 'qrcode';
@@ -53,6 +53,404 @@ export default function ProjectRoom() {
   const [docContent, setDocContent] = useState('');
   const [codeContent, setCodeContent] = useState('// Start coding in VS Code style here...\n');
   const [codeLanguage, setCodeLanguage] = useState('javascript');
+
+  // Upgraded IDE Workspace states
+  const [files, setFiles] = useState({
+    'README.md': {
+      name: 'README.md',
+      path: 'README.md',
+      content: '# Collaborative Code Workspace\n\nStart editing or create new files!',
+      language: 'markdown'
+    }
+  });
+  const [activeFilePath, setActiveFilePath] = useState('README.md');
+  const [openTabs, setOpenTabs] = useState(['README.md']);
+  const [unsavedFiles, setUnsavedFiles] = useState({});
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [sidebarActiveView, setSidebarActiveView] = useState('explorer');
+  const [terminalStdin, setTerminalStdin] = useState('');
+  const [terminalStats, setTerminalStats] = useState(null);
+  const [terminalIsRunning, setTerminalIsRunning] = useState(false);
+  const [editorTheme, setEditorTheme] = useState('vs-dark');
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [editorFontFamily, setEditorFontFamily] = useState("'JetBrains Mono', Consolas, monospace");
+  const [editorLineHeight, setEditorLineHeight] = useState(20);
+  const [editorWordWrap, setEditorWordWrap] = useState('on');
+  const [editorTabSize, setEditorTabSize] = useState(2);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState('');
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiMessageInput, setAiMessageInput] = useState('');
+  const [aiLogs, setAiLogs] = useState([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [projectSearchRegex, setProjectSearchRegex] = useState(false);
+  const [projectSearchCase, setProjectSearchCase] = useState(false);
+  const [projectSearchWord, setProjectSearchWord] = useState(false);
+  const [projectSearchResults, setProjectSearchResults] = useState([]);
+  const [presenceCursors, setPresenceCursors] = useState({});
+
+  // Upgraded IDE Advanced feature states
+  const [recentFiles, setRecentFiles] = useState([]);
+  const [favoriteFiles, setFavoriteFiles] = useState([]);
+  const [pinnedTabs, setPinnedTabs] = useState([]);
+  const [closedTabsHistory, setClosedTabsHistory] = useState([]);
+  const [projectReplaceQuery, setProjectReplaceQuery] = useState('');
+  const [editorMinimap, setEditorMinimap] = useState(true);
+  const [editorStickyScroll, setEditorStickyScroll] = useState(true);
+  const [editorLineNumbers, setEditorLineNumbers] = useState(true);
+  const [editorFormatOnSave, setEditorFormatOnSave] = useState(false);
+  const [userRole, setUserRole] = useState('Editor'); // 'Owner' | 'Editor' | 'Viewer'
+  const [typingUsers, setTypingUsers] = useState({});
+  const [outlineSymbols, setOutlineSymbols] = useState([]);
+  const [editorMarkers, setEditorMarkers] = useState([]);
+  const [toasts, setToasts] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
+  const [draggedNodePath, setDraggedNodePath] = useState(null);
+  const [activeRightClickPath, setActiveRightClickPath] = useState(null);
+  const [showRightClickMenu, setShowRightClickMenu] = useState(false);
+  const [rightClickMenuPos, setRightClickMenuPos] = useState({ x: 0, y: 0 });
+  const [codeReviewMode, setCodeReviewMode] = useState(false);
+  const [inlineComments, setInlineComments] = useState({}); // path -> array of { line, author, text, timestamp }
+  const [activeReviewCommentLine, setActiveReviewCommentLine] = useState(null);
+  const [reviewCommentInput, setReviewCommentInput] = useState('');
+  const [executionController, setExecutionController] = useState(null);
+  const [terminalHistory, setTerminalHistory] = useState([]);
+  const [bottomTerminalActiveTab, setBottomTerminalActiveTab] = useState('console');
+
+  // Toast Notification System helper
+  const addToast = (message, type = 'info') => {
+    const id = Date.now() + Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  };
+
+  // Set user role based on isOwner
+  useEffect(() => {
+    if (isOwner) {
+      setUserRole('Owner');
+    } else {
+      setUserRole('Editor');
+    }
+  }, [isOwner]);
+
+  // Project ZIP Export handler using JSZip dynamic loading
+  const handleExportAsZip = async () => {
+    addToast('Generating Project ZIP file...', 'info');
+    try {
+      if (!window.JSZip) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const zip = new window.JSZip();
+      Object.keys(files).forEach(pathStr => {
+        if (pathStr.split('/').pop() !== '.keep') {
+          zip.file(pathStr, files[pathStr].content);
+        }
+      });
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = window.URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${projectName || 'project'}-workspace.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      addToast('ZIP Downloaded successfully!', 'success');
+      addTimelineEvent('📥 Exported workspace project as ZIP archive');
+    } catch (err) {
+      addToast(`ZIP Export failed: ${err.message}`, 'error');
+    }
+  };
+
+  // Outline symbol parser effect
+  useEffect(() => {
+    const activeFile = files[activeFilePath];
+    if (!activeFile) {
+      setOutlineSymbols([]);
+      return;
+    }
+    const content = activeFile.content || '';
+    const symbols = [];
+    const lines = content.split('\n');
+
+    lines.forEach((line, idx) => {
+      let match = null;
+      let type = 'function';
+
+      if (activeFile.language === 'javascript' || activeFile.language === 'typescript') {
+        match = line.match(/(?:class\s+([A-Za-z0-9_$]+))|(?:function\s+([A-Za-z0-9_$]+))|(?:\s*const\s+([A-Za-z0-9_$]+)\s*=\s*(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>)/);
+        if (match) type = match[1] ? 'class' : 'function';
+      } else if (activeFile.language === 'python') {
+        match = line.match(/(?:class\s+([A-Za-z0-9_]+))|(?:def\s+([A-Za-z0-9_]+))/);
+        if (match) type = match[1] ? 'class' : 'method';
+      } else if (activeFile.language === 'cpp' || activeFile.language === 'java' || activeFile.language === 'csharp') {
+        match = line.match(/(?:class\s+([A-Za-z0-9_]+))|(?:\b[A-Za-z0-9_<>]+(?:\s+|\s*[*&]\s*)[A-Za-z0-9_]+(?:\s*::\s*[A-Za-z0-9_]+)?\s*\([^)]*\)\s*\{)/);
+      }
+
+      if (match) {
+        const name = match[1] || match[2] || match[3] || line.trim().split('(')[0];
+        if (name && name.length < 50) {
+          symbols.push({
+            name: name.trim(),
+            line: idx + 1,
+            type
+          });
+        }
+      }
+    });
+    setOutlineSymbols(symbols);
+  }, [activeFilePath, files]);
+
+  // Cancel code execution request handler
+  const handleStopExecution = () => {
+    if (executionController) {
+      executionController.abort();
+      setExecutionController(null);
+      setTerminalIsRunning(false);
+      setTerminalOutput(prev => prev + '\n⚠️ Execution cancelled by user.');
+      addToast('Code execution stopped.', 'warning');
+    }
+  };
+
+  // Recent files tracking
+  useEffect(() => {
+    if (activeFilePath) {
+      setRecentFiles(prev => {
+        const filtered = prev.filter(f => f !== activeFilePath);
+        return [activeFilePath, ...filtered].slice(0, 10);
+      });
+    }
+  }, [activeFilePath]);
+
+  const toggleFavoriteFile = (filePath, e) => {
+    e.stopPropagation();
+    setFavoriteFiles(prev =>
+      prev.includes(filePath) ? prev.filter(f => f !== filePath) : [...prev, filePath]
+    );
+    addToast(favoriteFiles.includes(filePath) ? 'Removed from favorites' : 'Added to favorites', 'success');
+  };
+
+  // Tab Pinning & History Reopeners
+  const togglePinTab = (tabPath, e) => {
+    e.stopPropagation();
+    setPinnedTabs(prev =>
+      prev.includes(tabPath) ? prev.filter(t => t !== tabPath) : [...prev, tabPath]
+    );
+    addToast(pinnedTabs.includes(tabPath) ? 'Tab unpinned' : 'Tab pinned', 'info');
+  };
+
+  const closeTabWithHistory = (tabPath, e) => {
+    e.stopPropagation();
+    setClosedTabsHistory(prev => [...prev, tabPath]);
+    closeTab(tabPath, e);
+  };
+
+  const reopenLastClosedTab = () => {
+    if (closedTabsHistory.length === 0) {
+      addToast('No recently closed tabs to reopen.', 'warning');
+      return;
+    }
+    const nextHistory = [...closedTabsHistory];
+    const path = nextHistory.pop();
+    setClosedTabsHistory(nextHistory);
+    if (files[path]) {
+      selectFile(path);
+      addToast(`Reopened ${path.split('/').pop()}`, 'success');
+    }
+  };
+
+  // Replace occurrence handlers
+  const handleReplaceOne = (pathStr, lineNum, matchText) => {
+    if (!files[pathStr]) return;
+    setFiles(prev => {
+      const file = prev[pathStr];
+      const lines = file.content.split('\n');
+      if (lines[lineNum - 1] !== undefined) {
+        const lineVal = lines[lineNum - 1];
+        let newLineVal = lineVal;
+        if (projectSearchRegex) {
+          try {
+            const flags = projectSearchCase ? '' : 'i';
+            const regex = new RegExp(projectSearchQuery, flags);
+            newLineVal = lineVal.replace(regex, projectReplaceQuery);
+          } catch (e) { }
+        } else {
+          newLineVal = lineVal.replace(projectSearchQuery, projectReplaceQuery);
+        }
+        lines[lineNum - 1] = newLineVal;
+        const updated = {
+          ...prev,
+          [pathStr]: {
+            ...file,
+            content: lines.join('\n')
+          }
+        };
+        triggerCodeUpdate(updated);
+        addToast('Occurrence replaced.', 'success');
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const handleReplaceAll = () => {
+    if (!projectSearchQuery) return;
+    setFiles(prev => {
+      const updated = { ...prev };
+      let totalCount = 0;
+      Object.keys(updated).forEach(pathStr => {
+        const file = updated[pathStr];
+        let nextContent = file.content;
+        let isMatch = false;
+        if (projectSearchRegex) {
+          try {
+            const flags = projectSearchCase ? 'g' : 'gi';
+            const regex = new RegExp(projectSearchQuery, flags);
+            isMatch = regex.test(nextContent);
+            if (isMatch) {
+              nextContent = nextContent.replace(regex, projectReplaceQuery);
+              totalCount++;
+            }
+          } catch (e) { }
+        } else {
+          const count = nextContent.split(projectSearchQuery).length - 1;
+          if (count > 0) {
+            nextContent = nextContent.replaceAll(projectSearchQuery, projectReplaceQuery);
+            totalCount += count;
+          }
+        }
+        updated[pathStr] = {
+          ...file,
+          content: nextContent
+        };
+      });
+      if (totalCount > 0) {
+        triggerCodeUpdate(updated);
+        addToast(`Replaced ${totalCount} occurrence(s) across project.`, 'success');
+      } else {
+        addToast('No occurrences found to replace.', 'warning');
+      }
+      return updated;
+    });
+  };
+
+  // Drag-and-drop hierarchy reorganization logic
+  const handleDragStartNode = (e, pathStr) => {
+    setDraggedNodePath(pathStr);
+    e.dataTransfer.setData('text/plain', pathStr);
+  };
+
+  const handleDropNode = (e, targetFolderHoverPath) => {
+    e.preventDefault();
+    if (!draggedNodePath || draggedNodePath === targetFolderHoverPath) return;
+
+    if (targetFolderHoverPath.startsWith(draggedNodePath + '/')) {
+      addToast('Cannot drop a folder into its own subdirectory.', 'error');
+      return;
+    }
+
+    setFiles(prev => {
+      const updated = { ...prev };
+      const keysToMove = Object.keys(updated).filter(k => k === draggedNodePath || k.startsWith(draggedNodePath + '/'));
+
+      keysToMove.forEach(oldKey => {
+        const fileData = updated[oldKey];
+        delete updated[oldKey];
+
+        let newKey = oldKey;
+        if (oldKey === draggedNodePath) {
+          const fileName = oldKey.split('/').pop();
+          newKey = targetFolderHoverPath ? `${targetFolderHoverPath}/${fileName}` : fileName;
+        } else {
+          const suffix = oldKey.substring(draggedNodePath.length);
+          const folderName = draggedNodePath.split('/').pop();
+          newKey = targetFolderHoverPath ? `${targetFolderHoverPath}/${folderName}${suffix}` : `${folderName}${suffix}`;
+        }
+
+        updated[newKey] = {
+          ...fileData,
+          path: newKey,
+          name: newKey.split('/').pop()
+        };
+      });
+
+      triggerCodeUpdate(updated);
+      addToast('Workspace nodes reorganized.', 'success');
+      return updated;
+    });
+    setDraggedNodePath(null);
+  };
+
+  // Inline comments reviews mapping
+  const addInlineComment = (lineNum) => {
+    if (!reviewCommentInput.trim() || !activeFilePath) return;
+    const author = username || 'Peer';
+    const text = reviewCommentInput.trim();
+
+    setInlineComments(prev => {
+      const list = prev[activeFilePath] || [];
+      const updatedList = [...list, { line: lineNum, author, text, timestamp: Date.now() }];
+      const updated = { ...prev, [activeFilePath]: updatedList };
+      return updated;
+    });
+    setReviewCommentInput('');
+    setActiveReviewCommentLine(null);
+    addToast('Review comment posted.', 'success');
+  };
+
+  // Autosavesnapshots history
+  useEffect(() => {
+    if (!files || Object.keys(files).length === 0) return;
+    const interval = setInterval(() => {
+      setSnapshots(prev => {
+        const nextSnapshots = [...prev, {
+          timestamp: Date.now(),
+          files: JSON.parse(JSON.stringify(files))
+        }];
+        if (nextSnapshots.length > 10) nextSnapshots.shift();
+        return nextSnapshots;
+      });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [files]);
+
+  const restoreSnapshot = (snapshotItem) => {
+    setFiles(snapshotItem.files);
+    triggerCodeUpdate(snapshotItem.files);
+    addToast('Project restored to snapshot version.', 'success');
+    addTimelineEvent(`🕒 Restored project to version from ${new Date(snapshotItem.timestamp).toLocaleTimeString()}`);
+  };
+
+  // Typing status clear out intervals
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTypingUsers(prev => {
+        const next = { ...prev };
+        let changed = false;
+        const now = Date.now();
+        Object.keys(next).forEach(u => {
+          if (now - next[u] > 3000) {
+            delete next[u];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [attachments, setAttachments] = useState([]);
   const [isOwner, setIsOwner] = useState(false);
   const [deleteConfirmFile, setDeleteConfirmFile] = useState(null);
@@ -119,20 +517,20 @@ export default function ProjectRoom() {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      
+
       osc.type = 'sine';
       osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
       osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
-      
+
       gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      
+
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
+
       osc.start();
       osc.stop(audioCtx.currentTime + 0.35);
-    } catch(e) {
+    } catch (e) {
       console.warn("Could not play synthesized audio alert:", e);
     }
   }, []);
@@ -241,6 +639,9 @@ export default function ProjectRoom() {
   const [drawingTool, setDrawingTool] = useState('pen'); // 'pen', 'select', 'eraser'
   const [brushWidth, setBrushWidth] = useState(3);
   const [brushColor, setBrushColor] = useState('#A93F55');
+  const [showStylingPopover, setShowStylingPopover] = useState(false);
+  const [showShapesPopover, setShowShapesPopover] = useState(false);
+  const [chatVisible, setChatVisible] = useState(true);
 
   // Core module references
   const socketRef = useRef(null);
@@ -268,6 +669,174 @@ export default function ProjectRoom() {
   useEffect(() => {
     handleRunCodeRef.current = handleRunCode;
   });
+
+  // Dynamic CSS styles tag builder for remote custom cursor colors
+  useEffect(() => {
+    Object.keys(presenceCursors).forEach(socketId => {
+      const presence = presenceCursors[socketId];
+      if (presence && presence.color) {
+        const styleId = `presence-style-${socketId}`;
+        let styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+          styleEl = document.createElement('style');
+          styleEl.id = styleId;
+          document.head.appendChild(styleEl);
+        }
+        styleEl.innerHTML = `
+          .remote-presence-cursor-${socketId} {
+            border-left: 2px solid ${presence.color} !important;
+            animation: presenceBlink 1s step-end infinite;
+          }
+          .remote-presence-selection-${socketId} {
+            background-color: ${presence.color}33 !important;
+          }
+        `;
+      }
+    });
+
+    return () => {
+      document.querySelectorAll('style[id^="presence-style-"]').forEach(styleEl => {
+        const socketId = styleEl.id.replace('presence-style-', '');
+        if (!presenceCursors[socketId]) {
+          styleEl.remove();
+        }
+      });
+    };
+  }, [presenceCursors]);
+
+  // Monaco editor cursors synchronization annotations
+  const presenceDecorationsRef = useRef([]);
+  useEffect(() => {
+    const editor = monacoRef.current;
+    if (!editor || !activeFilePath) return;
+
+    const newDecorations = [];
+    Object.keys(presenceCursors).forEach(socketId => {
+      const presence = presenceCursors[socketId];
+      if (presence.path === activeFilePath) {
+        if (presence.position) {
+          newDecorations.push({
+            range: {
+              startLineNumber: presence.position.lineNumber,
+              startColumn: presence.position.column,
+              endLineNumber: presence.position.lineNumber,
+              endColumn: presence.position.column + 1
+            },
+            options: {
+              className: `remote-presence-cursor-${socketId}`,
+              hoverMessage: { value: `**${presence.username || 'Peer'}** is editing here` }
+            }
+          });
+        }
+        if (presence.selection) {
+          newDecorations.push({
+            range: {
+              startLineNumber: presence.selection.startLineNumber,
+              startColumn: presence.selection.startColumn,
+              endLineNumber: presence.selection.endLineNumber,
+              endColumn: presence.selection.endColumn
+            },
+            options: {
+              className: `remote-presence-selection-${socketId}`,
+              hoverMessage: { value: `**${presence.username || 'Peer'}** selection` }
+            }
+          });
+        }
+      }
+    });
+
+    try {
+      if (editor.getModel()) {
+        presenceDecorationsRef.current = editor.deltaDecorations(
+          presenceDecorationsRef.current,
+          newDecorations
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to update presence decorations:', e);
+    }
+  }, [presenceCursors, activeFilePath]);
+
+  // Global Workspace Hotkeys
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      if (activeTab !== 'code') return;
+
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        reopenLastClosedTab();
+      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        setCodeReviewMode(prev => !prev);
+        addToast('Code Review Mode toggled!', 'info');
+      } else if (e.ctrlKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        // Save manual snapshot
+        setSnapshots(prev => [
+          ...prev,
+          { timestamp: Date.now(), files: JSON.parse(JSON.stringify(files)) }
+        ].slice(-10));
+        addToast('Manual snapshot saved!', 'success');
+        addTimelineEvent(`🕒 Manually saved snapshot at ${new Date().toLocaleTimeString()}`);
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setSidebarActiveView('search');
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        setSidebarActiveView('search');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, [activeTab, files, closedTabsHistory]);
+
+  // Project Search indexing
+  useEffect(() => {
+    if (!projectSearchQuery) {
+      setProjectSearchResults([]);
+      return;
+    }
+    const results = [];
+    Object.keys(files).forEach(pathStr => {
+      const content = files[pathStr].content;
+      const lines = content.split('\n');
+      lines.forEach((lineText, idx) => {
+        let isMatch = false;
+        if (projectSearchRegex) {
+          try {
+            const flags = projectSearchCase ? 'g' : 'gi';
+            const regex = new RegExp(projectSearchQuery, flags);
+            isMatch = regex.test(lineText);
+          } catch (e) { }
+        } else {
+          let needle = projectSearchQuery;
+          let haystack = lineText;
+          if (!projectSearchCase) {
+            needle = needle.toLowerCase();
+            haystack = haystack.toLowerCase();
+          }
+          if (projectSearchWord) {
+            const words = haystack.split(/\W+/);
+            isMatch = words.includes(needle);
+          } else {
+            isMatch = haystack.includes(needle);
+          }
+        }
+
+        if (isMatch) {
+          results.push({
+            path: pathStr,
+            lineNumber: idx + 1,
+            lineContent: lineText.trim()
+          });
+        }
+      });
+    });
+    setProjectSearchResults(results);
+  }, [projectSearchQuery, projectSearchRegex, projectSearchCase, projectSearchWord, files]);
 
   // Synchronizes visual skin changes with TinyMCE themes
   useEffect(() => {
@@ -390,6 +959,7 @@ export default function ProjectRoom() {
     // Capture dynamic ownerToken responses representing project creation
     socket.on('set owner token', (token) => {
       localStorage.setItem(`owner_token_${projectName}`, token);
+      localStorage.setItem(`owner_token_${projectName.toLowerCase()}`, token);
     });
 
     socket.on('is owner', (val) => {
@@ -451,13 +1021,87 @@ export default function ProjectRoom() {
     socket.on('code content', (data) => {
       if (!data) return;
       isRemoteCodeChangeRef.current = true;
-      setCodeContent(data.code);
-      setCodeLanguage(data.language);
-      if (monacoRef.current) {
-        monacoRef.current.setValue(data.code);
+      try {
+        const parsed = JSON.parse(data.code);
+        if (parsed && parsed.files) {
+          setFiles(prev => {
+            const nextFiles = { ...parsed.files };
+            const activeFile = nextFiles[activeFilePath];
+            if (activeFile && activeFile.content !== (prev[activeFilePath]?.content || '')) {
+              if (monacoRef.current) {
+                const editor = monacoRef.current;
+                const pos = editor.getPosition();
+                const sel = editor.getSelections();
+                editor.setValue(activeFile.content);
+                if (pos) editor.setPosition(pos);
+                if (sel) editor.setSelections(sel);
+              }
+            }
+            return nextFiles;
+          });
+        } else {
+          const legacyFile = 'index.js';
+          const newFiles = {
+            [legacyFile]: {
+              name: legacyFile,
+              path: legacyFile,
+              content: data.code,
+              language: data.language || 'javascript'
+            }
+          };
+          setFiles(newFiles);
+          setActiveFilePath(legacyFile);
+          if (monacoRef.current && monacoRef.current.getValue() !== data.code) {
+            monacoRef.current.setValue(data.code);
+          }
+        }
+      } catch (err) {
+        const legacyFile = 'index.js';
+        const newFiles = {
+          [legacyFile]: {
+            name: legacyFile,
+            path: legacyFile,
+            content: data.code,
+            language: data.language || 'javascript'
+          }
+        };
+        setFiles(newFiles);
+        setActiveFilePath(legacyFile);
+        if (monacoRef.current && monacoRef.current.getValue() !== data.code) {
+          monacoRef.current.setValue(data.code);
+        }
       }
       isRemoteCodeChangeRef.current = false;
-      addTimelineEvent(`💻 Code modified (${data.language})`);
+      addTimelineEvent('💻 Collaborative workspace files synced');
+    });
+
+    socket.on('cursor position', ({ socketId, username, color, path, position }) => {
+      setPresenceCursors(prev => ({
+        ...prev,
+        [socketId]: { ...prev[socketId], username, color, path, position }
+      }));
+    });
+
+    socket.on('cursor selection', ({ socketId, username, color, path, selection }) => {
+      setPresenceCursors(prev => ({
+        ...prev,
+        [socketId]: { ...prev[socketId], username, color, path, selection }
+      }));
+    });
+
+    socket.on('typing', ({ username, path }) => {
+      setTypingUsers(prev => ({
+        ...prev,
+        [username]: Date.now()
+      }));
+    });
+
+    socket.on('user left presence', ({ socketId }) => {
+      setPresenceCursors(prev => {
+        const copy = { ...prev };
+        delete copy[socketId];
+        return copy;
+      });
     });
 
     socket.on('whiteboard content', (content) => {
@@ -543,13 +1187,13 @@ export default function ProjectRoom() {
 
     socket.on('connect', () => {
       const currentKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || getCookie(`accesskey_project_${projectName}`) || '';
-      const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
+      const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || localStorage.getItem(`owner_token_${projectName.toLowerCase()}`) || '';
       socket.emit('join project', { projectName, accessKey: currentKey, ownerToken: savedOwnerToken });
     });
 
     // Now emit the initial join project event that all listeners are bound
     const savedKey = sessionStorage.getItem(`accesskey_project_${projectName}`) || getCookie(`accesskey_project_${projectName}`) || '';
-    const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
+    const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || localStorage.getItem(`owner_token_${projectName.toLowerCase()}`) || '';
     socket.emit('join project', { projectName, accessKey: savedKey, ownerToken: savedOwnerToken });
 
     return () => {
@@ -816,6 +1460,94 @@ export default function ProjectRoom() {
     canvas.renderAll();
   };
 
+  const addDiamond = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+    setDrawingTool('select');
+    const points = [
+      { x: 40, y: 0 },
+      { x: 80, y: 40 },
+      { x: 40, y: 80 },
+      { x: 0, y: 40 }
+    ];
+    const diamond = new Polygon(points, {
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      stroke: brushColor,
+      strokeWidth: 2
+    });
+    canvas.add(diamond);
+    canvas.setActiveObject(diamond);
+    canvas.renderAll();
+  };
+
+  const addArrow = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+    setDrawingTool('select');
+    const arrowPath = "M 0 10 L 100 10 M 100 10 L 85 0 M 100 10 L 85 20";
+    const arrow = new Path(arrowPath, {
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      stroke: brushColor,
+      strokeWidth: 2
+    });
+    canvas.add(arrow);
+    canvas.setActiveObject(arrow);
+    canvas.renderAll();
+  };
+
+  const addStar = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+    setDrawingTool('select');
+    const points = [
+      { x: 40, y: 0 },
+      { x: 50, y: 30 },
+      { x: 80, y: 30 },
+      { x: 56, y: 48 },
+      { x: 66, y: 80 },
+      { x: 40, y: 60 },
+      { x: 14, y: 80 },
+      { x: 24, y: 48 },
+      { x: 0, y: 30 },
+      { x: 30, y: 30 }
+    ];
+    const star = new Polygon(points, {
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      stroke: brushColor,
+      strokeWidth: 2
+    });
+    canvas.add(star);
+    canvas.setActiveObject(star);
+    canvas.renderAll();
+  };
+
+  const addHeart = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+    setDrawingTool('select');
+    const heartPath = "M 10,30 A 20,20 0,0,1 50,30 A 20,20 0,0,1 90,30 Q 90,60 50,90 Q 10,60 10,30 z";
+    const heart = new Path(heartPath, {
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      stroke: brushColor,
+      strokeWidth: 2
+    });
+    canvas.add(heart);
+    canvas.setActiveObject(heart);
+    canvas.renderAll();
+  };
+
   /**
    * Deletes currently selected canvas element(s).
    * Pushes a history snapshot onto the undo stack prior to removals.
@@ -938,6 +1670,38 @@ export default function ProjectRoom() {
     linkElement.click();
   };
 
+  const importWhiteboard = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const jsonContent = event.target.result;
+        const parsed = JSON.parse(jsonContent);
+        const canvas = fabricCanvasRef.current;
+        if (!canvas) return;
+
+        isRemoteCanvasChangeRef.current = true;
+        canvas.loadFromJSON(parsed).then(() => {
+          canvas.renderAll();
+          isRemoteCanvasChangeRef.current = false;
+          if (socketRef.current) {
+            socketRef.current.emit('whiteboard update', { projectName, content: jsonContent });
+          }
+          addTimelineEvent('📥 Imported whiteboard configuration');
+        }).catch((err) => {
+          alert('Failed to parse whiteboard JSON.');
+          isRemoteCanvasChangeRef.current = false;
+        });
+      } catch (err) {
+        alert('Invalid whiteboard JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // --- Attachments & File Uploads Handlers ---
 
   /**
@@ -1009,30 +1773,227 @@ export default function ProjectRoom() {
     }, 400);
   };
 
-  // --- Code Editor (Monaco) Handlers ---
+  // --- Upgraded IDE Workspace & Editor Handlers ---
 
-  /**
-   * Handles Monaco code modifications, debouncing Socket updates to prevent lag.
-   */
-  const handleCodeChange = (value) => {
-    setCodeContent(value);
+  const [saveStatus, setSaveStatus] = useState('Saved');
+  const [lastSavedTime, setLastSavedTime] = useState(new Date().toLocaleTimeString());
+  const [collapsedFolders, setCollapsedFolders] = useState({});
+
+  const getFileIcon = (filePath) => {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+      case 'js':
+      case 'jsx':
+        return <span style={{ color: '#f7df1e', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>JS</span>;
+      case 'ts':
+      case 'tsx':
+        return <span style={{ color: '#007acc', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>TS</span>;
+      case 'py':
+        return <span style={{ color: '#3776ab', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>PY</span>;
+      case 'html':
+        return <span style={{ color: '#e34f26', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>HTML</span>;
+      case 'css':
+        return <span style={{ color: '#1572b6', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>CSS</span>;
+      case 'json':
+        return <span style={{ color: '#ffb86c', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>{ }</span>;
+      case 'md':
+        return <span style={{ color: '#50fa7b', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>MD</span>;
+      case 'rs':
+        return <span style={{ color: '#dea584', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>RS</span>;
+      case 'go':
+        return <span style={{ color: '#8be9fd', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>GO</span>;
+      case 'cpp':
+      case 'c':
+        return <span style={{ color: '#50fa7b', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>C++</span>;
+      case 'java':
+        return <span style={{ color: '#ff5555', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>JV</span>;
+      case 'php':
+        return <span style={{ color: '#bd93f9', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>PHP</span>;
+      case 'sql':
+        return <span style={{ color: '#ffb86c', fontWeight: 'bold', fontSize: '0.75rem', marginRight: '4px' }}>SQL</span>;
+      default:
+        return <span style={{ color: '#839496', fontSize: '0.8rem', marginRight: '4px' }}>📄</span>;
+    }
+  };
+
+  const judge0LanguageMap = {
+    javascript: 63,
+    typescript: 74,
+    python: 71,
+    cpp: 54,
+    c: 50,
+    java: 62,
+    go: 60,
+    rust: 73,
+    php: 68,
+    sql: 82,
+    markdown: 0,
+    html: 0,
+    css: 0
+  };
+
+  const presenceColors = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899'];
+  const myPresenceColor = presenceColors[Math.abs((username || 'anon').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % presenceColors.length];
+
+  const defineMonacoThemes = (monaco) => {
+    monaco.editor.defineTheme('dracula', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '6272a4', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'ff79c6' },
+        { token: 'identifier', foreground: 'f8f8f2' },
+        { token: 'string', foreground: 'f1fa8c' },
+        { token: 'number', foreground: 'bd93f9' },
+      ],
+      colors: {
+        'editor.background': '#282a36',
+        'editor.foreground': '#f8f8f2',
+        'editor.lineHighlightBackground': '#44475a',
+        'editorCursor.foreground': '#bd93f9',
+      }
+    });
+
+    monaco.editor.defineTheme('nord', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '4c566a', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '81a1c1' },
+        { token: 'string', foreground: 'a3be8c' },
+        { token: 'number', foreground: 'b48ead' },
+      ],
+      colors: {
+        'editor.background': '#2e3440',
+        'editor.foreground': '#d8dee9',
+        'editor.lineHighlightBackground': '#3b4252',
+        'editorCursor.foreground': '#81a1c1',
+      }
+    });
+
+    monaco.editor.defineTheme('solarized', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '586e75', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '859900' },
+        { token: 'string', foreground: '2aa198' },
+        { token: 'number', foreground: 'd33682' },
+      ],
+      colors: {
+        'editor.background': '#002b36',
+        'editor.foreground': '#839496',
+        'editor.lineHighlightBackground': '#073642',
+        'editorCursor.foreground': '#859900',
+      }
+    });
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    monacoRef.current = editor;
+    defineMonacoThemes(monaco);
+
+    // Command Palette shortcut
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
+      setShowCommandPalette(prev => !prev);
+    });
+
+    // Run Code shortcut
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      if (handleRunCodeRef.current) handleRunCodeRef.current();
+    });
+
+    // Find / Replace shortcuts
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {
+      setSidebarActiveView('search');
+    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyH, () => {
+      setSidebarActiveView('search');
+    });
+
+    // Custom inline comments reviewer keybind
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyC, () => {
+      setCodeReviewMode(prev => !prev);
+      addToast('Code Review Mode toggled!', 'info');
+    });
+
+    // Monitor file markers / diagnostics
+    const updateMarkers = () => {
+      const model = editor.getModel();
+      if (model) {
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+        setEditorMarkers(markers);
+      }
+    };
+    editor.onDidChangeModelContent(updateMarkers);
+    editor.onDidChangeModel(updateMarkers);
+
+    // Sync cursor presence
+    editor.onDidChangeCursorPosition((e) => {
+      if (socketRef.current && activeFilePath) {
+        socketRef.current.emit('cursor position', {
+          projectName,
+          path: activeFilePath,
+          position: e.position,
+          username,
+          color: myPresenceColor
+        });
+      }
+    });
+
+    // Sync selection presence
+    editor.onDidChangeCursorSelection((e) => {
+      if (socketRef.current && activeFilePath) {
+        socketRef.current.emit('cursor selection', {
+          projectName,
+          path: activeFilePath,
+          selection: e.selection,
+          username,
+          color: myPresenceColor
+        });
+      }
+    });
+  };
+
+  const triggerCodeUpdate = (updatedFiles) => {
     if (isRemoteCodeChangeRef.current || !socketRef.current) return;
-
+    setSaveStatus('Saving...');
     if (codeTimeoutRef.current) clearTimeout(codeTimeoutRef.current);
     codeTimeoutRef.current = setTimeout(() => {
+      const serialized = JSON.stringify({ files: updatedFiles });
       socketRef.current.emit('code update', {
         projectName,
-        code: value,
-        language: codeLanguage
+        code: serialized,
+        language: 'json'
       });
+      setSaveStatus('Saved');
+      setLastSavedTime(new Date().toLocaleTimeString());
+      if (editorFormatOnSave) {
+        formatActiveDocument();
+      }
     }, 400);
   };
 
-  /**
-   * Inserts a code snippet into the Monaco editor at the current cursor position.
-   */
+  const handleCodeChange = (value) => {
+    if (!activeFilePath) return;
+    if (socketRef.current) {
+      socketRef.current.emit('typing', { username, path: activeFilePath });
+    }
+    setFiles(prev => {
+      const updated = {
+        ...prev,
+        [activeFilePath]: {
+          ...prev[activeFilePath],
+          content: value || ''
+        }
+      };
+      triggerCodeUpdate(updated);
+      return updated;
+    });
+  };
+
   const handleInsertSnippet = (snippetCode) => {
-    if (monacoRef.current) {
+    if (monacoRef.current && activeFilePath) {
       const editor = monacoRef.current;
       const position = editor.getPosition() || { lineNumber: 1, column: 1 };
       const range = {
@@ -1047,82 +2008,417 @@ export default function ProjectRoom() {
         forceMoveMarkers: true
       }]);
       editor.focus();
-    } else {
-      const newCode = codeContent + '\n' + snippetCode;
-      setCodeContent(newCode);
-      socketRef.current?.emit('code update', {
-        projectName,
-        code: newCode,
-        language: codeLanguage
+    } else if (activeFilePath) {
+      setFiles(prev => {
+        const file = prev[activeFilePath];
+        const newCode = (file?.content || '') + '\n' + snippetCode;
+        const updated = {
+          ...prev,
+          [activeFilePath]: {
+            ...file,
+            content: newCode
+          }
+        };
+        triggerCodeUpdate(updated);
+        return updated;
       });
     }
     setActiveTab('code');
     addTimelineEvent('Saved snippet inserted into editor');
   };
 
-  /**
-   * Handles dropdown configuration updates for Monaco syntax highlighting.
-   */
-  const handleLanguageChange = (e) => {
-    const lang = e.target.value;
-    setCodeLanguage(lang);
-    if (socketRef.current) {
-      socketRef.current.emit('code update', {
-        projectName,
-        code: codeContent,
-        language: lang
-      });
+  const createFile = (pathStr) => {
+    if (!pathStr || files[pathStr]) return;
+    const ext = pathStr.split('.').pop() || 'js';
+    const extMap = {
+      js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+      py: 'python', cpp: 'cpp', c: 'c', java: 'java', html: 'html', css: 'css',
+      json: 'json', md: 'markdown', sql: 'sql', php: 'php', go: 'go', rs: 'rust'
+    };
+    const language = extMap[ext.toLowerCase()] || 'javascript';
+    setFiles(prev => {
+      const updated = {
+        ...prev,
+        [pathStr]: {
+          name: pathStr.split('/').pop(),
+          path: pathStr,
+          content: '',
+          language
+        }
+      };
+      triggerCodeUpdate(updated);
+      return updated;
+    });
+    setActiveFilePath(pathStr);
+    setOpenTabs(prev => prev.includes(pathStr) ? prev : [...prev, pathStr]);
+    addTimelineEvent(`📁 Created file ${pathStr}`);
+  };
+
+  const deleteFile = (pathStr) => {
+    setFiles(prev => {
+      const updated = { ...prev };
+      delete updated[pathStr];
+      triggerCodeUpdate(updated);
+      return updated;
+    });
+    setOpenTabs(prev => prev.filter(t => t !== pathStr));
+    if (activeFilePath === pathStr) {
+      const remaining = openTabs.filter(t => t !== pathStr);
+      if (remaining.length > 0) {
+        setActiveFilePath(remaining[remaining.length - 1]);
+      } else {
+        setActiveFilePath('');
+      }
+    }
+    addTimelineEvent(`❌ Deleted file ${pathStr}`);
+  };
+
+  const renameFile = (oldPath, newPath) => {
+    if (!newPath || files[newPath] || !files[oldPath]) return;
+    setFiles(prev => {
+      const updated = { ...prev };
+      const fileData = updated[oldPath];
+      delete updated[oldPath];
+      updated[newPath] = {
+        ...fileData,
+        name: newPath.split('/').pop(),
+        path: newPath
+      };
+      triggerCodeUpdate(updated);
+      return updated;
+    });
+    if (activeFilePath === oldPath) {
+      setActiveFilePath(newPath);
+    }
+    setOpenTabs(prev => prev.map(t => t === oldPath ? newPath : t));
+    addTimelineEvent(`✏️ Renamed file to ${newPath}`);
+  };
+
+  const selectFile = (pathStr) => {
+    setActiveFilePath(pathStr);
+    if (!openTabs.includes(pathStr)) {
+      setOpenTabs(prev => [...prev, pathStr]);
     }
   };
 
-  /**
-   * Dispatches code execution request to the server and updates the terminal output.
-   */
-  const handleRunCode = async () => {
-    setIsRunning(true);
-    setTerminalOpen(true);
-    if (codeLanguage === 'html') {
-      setShowPreview(true);
-      setTerminalOutput('Rendering HTML Live Preview...');
-      setIsRunning(false);
+  const closeTab = (pathStr, e) => {
+    e.stopPropagation();
+    setOpenTabs(prev => {
+      const nextTabs = prev.filter(t => t !== pathStr);
+      if (activeFilePath === pathStr) {
+        if (nextTabs.length > 0) {
+          setActiveFilePath(nextTabs[nextTabs.length - 1]);
+        } else {
+          setActiveFilePath('');
+        }
+      }
+      return nextTabs;
+    });
+  };
+
+  const formatActiveDocument = () => {
+    if (monacoRef.current) {
+      monacoRef.current.getAction('editor.action.formatDocument').run();
+      addTimelineEvent('✨ Formatted document');
+    }
+  };
+
+  const getSelectedCode = () => {
+    if (monacoRef.current) {
+      const editor = monacoRef.current;
+      const selection = editor.getSelection();
+      if (selection && !selection.isEmpty()) {
+        return editor.getModel().getValueInRange(selection);
+      }
+    }
+    return '';
+  };
+
+  const handleAiAction = (actionType) => {
+    const code = getSelectedCode() || files[activeFilePath]?.content || '';
+    if (!code && actionType !== 'error') {
+      alert('Active file is empty.');
       return;
     }
 
-    setShowPreview(false);
-    setTerminalOutput('Compiling and running code...');
+    let prompt = '';
+    if (actionType === 'explain') {
+      prompt = `Explain the following code in detail:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'fix') {
+      prompt = `Identify any bugs or syntax issues in the following code and provide a corrected version:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'optimize') {
+      prompt = `Optimize the performance and readability of this code snippet:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'refactor') {
+      prompt = `Refactor this code to follow SOLID principles and clean practices:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'comments') {
+      prompt = `Add descriptive inline comments and docstrings to clarify the following code:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'tests') {
+      prompt = `Generate a robust suite of unit tests for the following code snippet:\n\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'error') {
+      prompt = `Review this compiler diagnostic output and propose a detailed fix:\n\nCompiler Output:\n${terminalOutput}\n\nActive Source code context:\n\`\`\`\n${code}\n\`\`\``;
+    } else if (actionType === 'convert') {
+      prompt = `Convert the following code logic to Python if written in Javascript/Java/C++, or Javascript if written in Python:\n\n\`\`\`\n${code}\n\`\`\``;
+    }
+
+    setAiPanelOpen(true);
+    sendAiMessage(prompt);
+  };
+
+  const sendAiMessage = async (msgText) => {
+    if (!msgText.trim() || aiLoading) return;
+    setAiLoading(true);
+    setAiLogs(prev => [...prev, { role: 'user', text: msgText }]);
+    setAiMessageInput('');
+
+    try {
+      const response = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msgText,
+          history: aiLogs
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setAiLogs(prev => [...prev, { role: 'model', text: data.response }]);
+        addTimelineEvent('🤖 AI assistant response received');
+      } else {
+        setAiLogs(prev => [...prev, { role: 'model', text: `❌ Error: ${data.error || 'AI request failed'}` }]);
+      }
+    } catch (err) {
+      setAiLogs(prev => [...prev, { role: 'model', text: `❌ Network Error: ${err.message}` }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const runLocalCompiler = async (code, language) => {
+    setTerminalOutput('⏳ Executing code via local compiler...');
     try {
       const response = await fetch('/api/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: codeContent, language: codeLanguage })
+        body: JSON.stringify({ code, language })
       });
       const data = await response.json();
-
-      if (response.ok) {
-        let output = '';
-        if (data.timeout) {
-          output += '⚠️ Execution timed out (exceeded 5 seconds boundary).\n';
-        }
-        if (data.stdout) {
-          output += data.stdout;
-        }
-        if (data.stderr) {
-          output += `\nError:\n${data.stderr}`;
-        }
-        if (!data.stdout && !data.stderr && !data.timeout) {
-          output += `Process exited with code ${data.exitCode}`;
-        }
-        setTerminalOutput(output);
-      } else {
-        setTerminalOutput(`Error: ${data.error || 'Execution failed.'}`);
-      }
+      const output = data.stdout || data.stderr || 'No output.';
+      setTerminalOutput(output);
+      setTerminalStats({
+        time: data.timeout ? 'Timed out' : '8.0s limit',
+        memory: 'N/A',
+        status: data.exitCode === 0 ? 'Success' : 'Failed'
+      });
+      setTerminalOpen(true);
+      addTimelineEvent(`🚀 Ran code: ${files[activeFilePath]?.name} (Local Compiler)`);
     } catch (err) {
-      console.error(err);
-      setTerminalOutput('Execution failed. Network error.');
-    } finally {
-      setIsRunning(false);
+      setTerminalOutput(`❌ Execution failed: ${err.message}`);
     }
   };
+
+  const handleRunCode = async () => {
+    const activeFile = files[activeFilePath];
+    if (!activeFile) return;
+
+    setTerminalIsRunning(true);
+    setTerminalOutput('⏳ Executing code via Judge0...');
+    setTerminalStats(null);
+    setTerminalOpen(true);
+
+    const langId = judge0LanguageMap[activeFile.language];
+
+    if (activeFile.language === 'html' || activeFile.language === 'css' || activeFile.language === 'markdown') {
+      setTerminalOutput('🌐 Loaded active view in web preview frame.');
+      setTerminalIsRunning(false);
+      setShowPreview(true);
+      return;
+    }
+
+    if (!langId) {
+      runLocalCompiler(activeFile.content, activeFile.language);
+      setTerminalIsRunning(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('https://ce.judge0.com/submissions?wait=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_code: activeFile.content,
+          language_id: langId,
+          stdin: terminalStdin
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Judge0 CE API failed');
+      }
+
+      const data = await response.json();
+      const output = data.stdout || data.compile_output || data.stderr || 'No output.';
+      setTerminalOutput(output);
+      setTerminalStats({
+        time: data.time ? `${data.time}s` : '0.0s',
+        memory: data.memory ? `${(data.memory / 1024).toFixed(2)}MB` : '0.0MB',
+        status: data.status?.description || 'Done'
+      });
+      addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Judge0)`);
+    } catch (err) {
+      console.warn('Judge0 failed, falling back to local compiler:', err);
+      runLocalCompiler(activeFile.content, activeFile.language);
+    } finally {
+      setTerminalIsRunning(false);
+    }
+  };
+
+  const buildFileTree = (filesMap) => {
+    const root = { name: 'root', type: 'folder', path: '', children: {} };
+    Object.keys(filesMap).forEach(filePath => {
+      const parts = filePath.split('/');
+      let current = root;
+      parts.forEach((part, index) => {
+        const isLast = index === parts.length - 1;
+        if (!current.children[part]) {
+          current.children[part] = {
+            name: part,
+            type: isLast ? 'file' : 'folder',
+            path: parts.slice(0, index + 1).join('/'),
+            children: {}
+          };
+        }
+        current = current.children[part];
+      });
+    });
+    return root;
+  };
+
+  const toggleFolder = (pathStr) => {
+    setCollapsedFolders(prev => ({
+      ...prev,
+      [pathStr]: !prev[pathStr]
+    }));
+  };
+
+  const renderFileTree = (node) => {
+    const sortedChildren = Object.values(node.children).sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return sortedChildren.map(child => {
+      if (child.name === '.keep') return null;
+
+      const isFolder = child.type === 'folder';
+      const isCollapsed = collapsedFolders[child.path];
+
+      return (
+        <div key={child.path} className="file-tree-node" style={{ paddingLeft: '12px' }}>
+          {isFolder ? (
+            <div
+              draggable
+              onDragStart={(e) => handleDragStartNode(e, child.path)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => handleDropNode(e, child.path)}
+            >
+              <div
+                className="file-node-item folder-item"
+                onClick={() => toggleFolder(child.path)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setActiveRightClickPath(child.path);
+                  setRightClickMenuPos({ x: e.clientX, y: e.clientY });
+                  setShowRightClickMenu(true);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '4px 6px', borderRadius: '4px' }}
+              >
+                <span>{isCollapsed ? '📁' : '📂'}</span>
+                <span className="node-name" style={{ fontWeight: 600 }}>{child.name}</span>
+                <div className="folder-actions" style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                  <button onClick={(e) => { e.stopPropagation(); const fn = prompt('File name:'); if (fn) createFile(`${child.path}/${fn}`); }} title="New File" style={{ border: 'none', background: 'transparent', fontSize: '0.85rem', cursor: 'pointer' }}>📄+</button>
+                  <button onClick={(e) => {
+                    e.stopPropagation(); if (confirm(`Delete folder ${child.path}?`)) {
+                      Object.keys(files).forEach(f => {
+                        if (f.startsWith(child.path + '/')) deleteFile(f);
+                      });
+                    }
+                  }} title="Delete Folder" style={{ border: 'none', background: 'transparent', fontSize: '0.85rem', cursor: 'pointer' }}>🗑️</button>
+                </div>
+              </div>
+              {!isCollapsed && (
+                <div className="folder-children">
+                  {renderFileTree(child)}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              draggable
+              onDragStart={(e) => handleDragStartNode(e, child.path)}
+              className={`file-node-item file-item ${activeFilePath === child.path ? 'active' : ''}`}
+              onClick={() => selectFile(child.path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setActiveRightClickPath(child.path);
+                setRightClickMenuPos({ x: e.clientX, y: e.clientY });
+                setShowRightClickMenu(true);
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '4px 6px', borderRadius: '4px' }}
+            >
+              {getFileIcon(child.path)}
+              <span className="node-name">{child.name}</span>
+              <button
+                onClick={(e) => toggleFavoriteFile(child.path, e)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: favoriteFiles.includes(child.path) ? '#f59e0b' : '#6b7280', fontSize: '0.8rem', marginLeft: 'auto' }}
+                title="Favorite File"
+              >
+                ★
+              </button>
+              <div className="file-actions" style={{ display: 'flex', gap: '4px' }}>
+                <button onClick={(e) => { e.stopPropagation(); const np = prompt('Rename file to:', child.path); if (np) renameFile(child.path, np); }} title="Rename File" style={{ border: 'none', background: 'transparent', fontSize: '0.85rem', cursor: 'pointer' }}>✏️</button>
+                <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete file ${child.path}?`)) deleteFile(child.path); }} title="Delete File" style={{ border: 'none', background: 'transparent', fontSize: '0.85rem', cursor: 'pointer' }}>🗑️</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  const selectSearchResult = (pathStr, lineNum) => {
+    selectFile(pathStr);
+    setTimeout(() => {
+      if (monacoRef.current) {
+        monacoRef.current.revealLineInCenter(lineNum);
+        monacoRef.current.setPosition({ lineNumber: lineNum, column: 1 });
+        monacoRef.current.focus();
+      }
+    }, 120);
+  };
+
+  const commandPaletteOptions = [
+    { label: 'Run Active File', action: () => handleRunCode() },
+    { label: 'Format Document', action: () => formatActiveDocument() },
+    { label: 'Toggle Console Terminal', action: () => setTerminalOpen(prev => !prev) },
+    { label: 'Toggle AI Assistant Sidebar', action: () => setAiPanelOpen(prev => !prev) },
+    {
+      label: 'Create New File', action: () => {
+        const name = prompt('Enter new file path (e.g. src/App.jsx):');
+        if (name) createFile(name);
+      }
+    },
+    { label: 'Switch Theme: VS Dark', action: () => setEditorTheme('vs-dark') },
+    { label: 'Switch Theme: VS Light', action: () => setEditorTheme('vs-light') },
+    { label: 'Switch Theme: Dracula', action: () => setEditorTheme('dracula') },
+    { label: 'Switch Theme: Nord', action: () => setEditorTheme('nord') },
+    { label: 'Switch Theme: Solarized Dark', action: () => setEditorTheme('solarized') },
+    { label: 'Increase Font Size', action: () => setEditorFontSize(prev => Math.min(prev + 1, 30)) },
+    { label: 'Decrease Font Size', action: () => setEditorFontSize(prev => Math.max(prev - 1, 10)) },
+  ];
+
+  const filteredCommands = commandPaletteOptions.filter(cmd =>
+    cmd.label.toLowerCase().includes(commandPaletteQuery.toLowerCase())
+  );
 
   // --- Chat Submit Handlers ---
 
@@ -1145,7 +2441,7 @@ export default function ProjectRoom() {
       setChangeKeyError('New key must be at least 4 characters.');
       return;
     }
-    const ownerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
+    const ownerToken = localStorage.getItem(`owner_token_${projectName}`) || localStorage.getItem(`owner_token_${projectName.toLowerCase()}`) || '';
     setChangeKeyLoading(true);
     setChangeKeyError('');
     try {
@@ -1181,7 +2477,7 @@ export default function ProjectRoom() {
     sessionStorage.setItem(`accesskey_project_${projectName}`, key);
     setCookie(`accesskey_project_${projectName}`, key);
     if (socketRef.current) {
-      const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || '';
+      const savedOwnerToken = localStorage.getItem(`owner_token_${projectName}`) || localStorage.getItem(`owner_token_${projectName.toLowerCase()}`) || '';
       socketRef.current.emit('join project', {
         projectName,
         accessKey: key,
@@ -1463,7 +2759,7 @@ export default function ProjectRoom() {
                 <X size={18} />
               </button>
             </div>
-            
+
             <div className="poll-input-group">
               <label>Snippet Title</label>
               <input
@@ -1473,7 +2769,7 @@ export default function ProjectRoom() {
                 onChange={e => setNewSnippetTitle(e.target.value)}
               />
             </div>
-            
+
             <div className="poll-input-group">
               <label>Programming Language</label>
               <select
@@ -1488,7 +2784,7 @@ export default function ProjectRoom() {
                 <option value="cpp">C++</option>
               </select>
             </div>
-            
+
             <div className="poll-input-group">
               <label>Snippet Code</label>
               <textarea
@@ -1509,13 +2805,13 @@ export default function ProjectRoom() {
                 onChange={e => setNewSnippetCode(e.target.value)}
               />
             </div>
-            
+
             <button
               className="create-poll-submit-btn"
               onClick={() => {
                 if (!newSnippetTitle.trim()) return alert('Please enter a snippet title');
                 if (!newSnippetCode.trim()) return alert('Please enter snippet code');
-                
+
                 const newSnippet = {
                   id: 'snippet_' + Math.random().toString(36).substr(2, 9),
                   title: newSnippetTitle,
@@ -1523,12 +2819,12 @@ export default function ProjectRoom() {
                   language: newSnippetLang,
                   createdAt: Date.now()
                 };
-                
+
                 const updated = [newSnippet, ...snippets];
                 setSnippets(updated);
                 socketRef.current?.emit('update snippets', { projectName, snippets: JSON.stringify(updated) });
                 addTimelineEvent(`Saved code snippet: "${newSnippetTitle}"`);
-                
+
                 setNewSnippetTitle('');
                 setNewSnippetCode('');
                 setNewSnippetLang('javascript');
@@ -1542,7 +2838,7 @@ export default function ProjectRoom() {
         </div>
       )}
 
-      <main className="project-editor-wrapper">
+      <main className={`project-editor-wrapper ${chatVisible ? '' : 'sidebar-hidden'}`}>
         {/* Share / Invite Modal */}
         {showShareModal && (
           <div className="chat-lightbox" onClick={() => setShowShareModal(false)}>
@@ -1584,7 +2880,7 @@ export default function ProjectRoom() {
             <div className="workspace-title-area">
               <div className="workspace-title-text-group">
                 <h2>Project: {projectName}</h2>
-                
+
                 <div className="header-room-name-area">
                   {isEditingNickname ? (
                     <div className="nickname-edit-row">
@@ -1628,6 +2924,14 @@ export default function ProjectRoom() {
                   style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
                   <Link size={13} /> <span className="btn-text">Share</span>
+                </button>
+                <button
+                  onClick={() => setChatVisible(!chatVisible)}
+                  className="workspace-tour-trigger-btn"
+                  title={chatVisible ? "Hide Sidebar Chat & Users" : "Show Sidebar Chat & Users"}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <MessageSquare size={13} /> <span className="btn-text">{chatVisible ? "Hide Chat" : "Show Chat"}</span>
                 </button>
                 <button
                   onClick={() => setTourStep(0)}
@@ -1713,58 +3017,240 @@ export default function ProjectRoom() {
           <div className="workspace-panes">
             {/* 1. Whiteboard Pane */}
             <div id="pane-sketch" className={`workspace-pane ${activeTab === 'sketch' ? 'active' : ''}`}>
-              <div className="whiteboard-controls">
-                <button
-                  className={drawingTool === 'pen' ? 'active' : ''}
-                  onClick={() => setDrawingTool('pen')}
-                >
-                  ✏️ Pen
-                </button>
-                <button
-                  className={drawingTool === 'eraser' ? 'active' : ''}
-                  onClick={() => setDrawingTool('eraser')}
-                >
-                  🧼 Eraser
-                </button>
-                <button
-                  className={drawingTool === 'select' ? 'active' : ''}
-                  onClick={() => setDrawingTool('select')}
-                >
-                  🖐️ Select
-                </button>
-                <button onClick={addRect}>🟩 Rect</button>
-                <button onClick={addCircle}>⭕ Circle</button>
-                <button onClick={addTriangle}>🔺 Triangle</button>
-                <button onClick={addLine}>➖ Line</button>
-                <button onClick={deleteSelected} title="Delete Selected Shape">✂️ Cut</button>
-                <button onClick={handleUndo} title="Undo">↩️ Undo</button>
-                <button onClick={handleRedo} title="Redo">↪️ Redo</button>
-                <label>
-                  Brush width:
-                  <input
-                    type="range"
-                    min="1"
-                    max="30"
-                    value={brushWidth}
-                    onChange={(e) => setBrushWidth(parseInt(e.target.value))}
-                  />
-                </label>
-                <label>
-                  Color:
-                  <input
-                    type="color"
-                    value={brushColor}
-                    onChange={(e) => setBrushColor(e.target.value)}
-                  />
-                </label>
-                <button onClick={clearWhiteboard} title="Clear Drawing Board">
-                  <Trash2 size={14} /> Clear
-                </button>
-                <button onClick={exportWhiteboard} title="Export Whiteboard JSON">
-                  <Download size={14} /> Export
-                </button>
-              </div>
-              <div className="whiteboard-canvas-wrapper">
+              <div className="whiteboard-canvas-wrapper" style={{ position: 'relative' }}>
+                {/* Floating Vertical Toolbar */}
+                <div className="whiteboard-vertical-toolbar" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className={`tool-btn ${drawingTool === 'select' ? 'active' : ''}`}
+                    onClick={() => { setDrawingTool('select'); setShowShapesPopover(false); setShowStylingPopover(false); }}
+                    title="Select & Move Shapes"
+                  >
+                    <MousePointer size={20} />
+                  </button>
+
+                  <button
+                    className={`tool-btn ${drawingTool === 'pen' ? 'active' : ''}`}
+                    onClick={() => { setDrawingTool('pen'); setShowShapesPopover(false); setShowStylingPopover(false); }}
+                    title="Draw Freehand"
+                    style={drawingTool === 'pen' ? { borderLeft: `3px solid ${brushColor}` } : {}}
+                  >
+                    <Pencil size={20} />
+                  </button>
+
+                  <button
+                    className={`tool-btn ${drawingTool === 'eraser' ? 'active' : ''}`}
+                    onClick={() => { setDrawingTool('eraser'); setShowShapesPopover(false); setShowStylingPopover(false); }}
+                    title="Erase Freehand Drawing"
+                  >
+                    <Eraser size={20} />
+                  </button>
+
+                  <div className="toolbar-divider" />
+
+                  {/* Shapes Trigger */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      className={`tool-btn ${showShapesPopover ? 'active' : ''}`}
+                      onClick={() => { setShowShapesPopover(!showShapesPopover); setShowStylingPopover(false); }}
+                      title="Insert Shapes"
+                    >
+                      <Shapes size={20} />
+                    </button>
+
+                    {showShapesPopover && (
+                      <div className="shapes-popover-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="popover-header">
+                          <h4>Insert Shape</h4>
+                          <button className="popover-close-btn" onClick={() => setShowShapesPopover(false)}>
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div className="shapes-grid">
+                          <button
+                            onClick={() => { addRect(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Rectangle"
+                          >
+                            <Square size={20} />
+                            <span>Rectangle</span>
+                          </button>
+                          <button
+                            onClick={() => { addCircle(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Circle"
+                          >
+                            <CircleIcon size={20} />
+                            <span>Circle</span>
+                          </button>
+                          <button
+                            onClick={() => { addTriangle(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Triangle"
+                          >
+                            <TriangleIcon size={20} />
+                            <span>Triangle</span>
+                          </button>
+                          <button
+                            onClick={() => { addLine(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Line"
+                          >
+                            <Minus size={20} style={{ transform: 'rotate(-45deg)' }} />
+                            <span>Line</span>
+                          </button>
+                          <button
+                            onClick={() => { addDiamond(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Diamond"
+                          >
+                            <Diamond size={20} />
+                            <span>Diamond</span>
+                          </button>
+                          <button
+                            onClick={() => { addArrow(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Arrow"
+                          >
+                            <ArrowRight size={20} />
+                            <span>Arrow</span>
+                          </button>
+                          <button
+                            onClick={() => { addStar(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Star"
+                          >
+                            <Star size={20} />
+                            <span>Star</span>
+                          </button>
+                          <button
+                            onClick={() => { addHeart(); setShowShapesPopover(false); }}
+                            className="shape-select-btn"
+                            title="Heart"
+                          >
+                            <Heart size={20} />
+                            <span>Heart</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Styling Trigger */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      className={`tool-btn ${showStylingPopover ? 'active' : ''}`}
+                      onClick={() => { setShowStylingPopover(!showStylingPopover); setShowShapesPopover(false); }}
+                      title="Styling & Presets"
+                      style={{ borderLeft: `3px solid ${brushColor}` }}
+                    >
+                      <Palette size={20} />
+                    </button>
+
+                    {showStylingPopover && (
+                      <div className="styling-popover-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="popover-header">
+                          <h4>Brush Styling</h4>
+                          <button className="popover-close-btn" onClick={() => setShowStylingPopover(false)}>
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        <div className="popover-section">
+                          <label>Presets</label>
+                          <div className="color-presets" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                            {['#A93F55', '#1e293b', '#2563eb', '#16a34a', '#d97706', '#9333ea'].map((color) => (
+                              <button
+                                key={color}
+                                className={`preset-color-btn ${brushColor.toLowerCase() === color.toLowerCase() ? 'selected' : ''}`}
+                                style={{ backgroundColor: color, width: '20px', height: '20px', borderRadius: '50%', border: 'none', cursor: 'pointer', transition: 'var(--transition)' }}
+                                onClick={() => setBrushColor(color)}
+                                title={`Select Color ${color}`}
+                              />
+                            ))}
+                            <div className="color-picker-wrapper" title="More Colors" style={{ position: 'relative', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <input
+                                type="color"
+                                value={brushColor}
+                                onChange={(e) => setBrushColor(e.target.value)}
+                                className="color-picker-input"
+                                style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                              />
+                              <Palette size={13} className="color-picker-icon" style={{ color: 'var(--text-color)' }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="popover-section">
+                          <label>Thickness ({brushWidth}px)</label>
+                          <div className="brush-presets" style={{ display: 'flex', gap: '8px' }}>
+                            {[2, 5, 10, 20].map((size) => (
+                              <button
+                                key={size}
+                                className={`brush-preset-btn ${brushWidth === size ? 'selected' : ''}`}
+                                onClick={() => setBrushWidth(size)}
+                                title={`Preset Width ${size}px`}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}
+                              >
+                                <span
+                                  className="brush-dot"
+                                  style={{ display: 'block', borderRadius: '50%', background: 'var(--text-color)', width: `${Math.min(size + 2, 14)}px`, height: `${Math.min(size + 2, 14)}px` }}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          <div className="brush-slider-wrapper" style={{ marginTop: '8px' }}>
+                            <input
+                              type="range"
+                              min="1"
+                              max="30"
+                              value={brushWidth}
+                              onChange={(e) => setBrushWidth(parseInt(e.target.value))}
+                              className="brush-slider"
+                              title="Fine-tune brush width"
+                              style={{ width: '100%' }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="toolbar-divider" />
+
+                  {/* Actions */}
+                  <button onClick={deleteSelected} title="Delete Selected Shape" className="tool-btn text-danger">
+                    <Scissors size={20} />
+                  </button>
+
+                  <button onClick={clearWhiteboard} title="Clear Drawing Board" className="tool-btn text-danger">
+                    <Trash2 size={20} />
+                  </button>
+
+                  <button onClick={exportWhiteboard} title="Export Whiteboard JSON" className="tool-btn">
+                    <Download size={20} />
+                  </button>
+
+                  <label className="tool-btn" title="Import Whiteboard JSON" style={{ display: 'flex', cursor: 'pointer', margin: 0, justifyContent: 'center', alignItems: 'center' }}>
+                    <Upload size={20} />
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={importWhiteboard}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
+
+                {/* Floating History / Undo-Redo Toolbar */}
+                <div className="whiteboard-history-toolbar">
+                  <button onClick={handleUndo} title="Undo last action" className="action-btn">
+                    <Undo size={18} />
+                  </button>
+                  <button onClick={handleRedo} title="Redo last undone action" className="action-btn">
+                    <Redo size={18} />
+                  </button>
+                </div>
+
                 <canvas ref={canvasRef} />
               </div>
             </div>
@@ -2019,125 +3505,876 @@ export default function ProjectRoom() {
             </div>
 
             {/* 3. Coding Board (Monaco) Pane */}
-            <div id="pane-code" className={`workspace-pane ${activeTab === 'code' ? 'active' : ''}`}>
-              <div className="code-controls">
-                <label>
-                  Language:
-                  <select value={codeLanguage} onChange={handleLanguageChange}>
-                    <option value="javascript">JavaScript</option>
-                    <option value="typescript">TypeScript</option>
-                    <option value="python">Python</option>
-                    <option value="html">HTML</option>
-                    <option value="css">CSS</option>
-                    <option value="cpp">C++</option>
-                    <option value="java">Java</option>
-                    <option value="json">JSON</option>
-                  </select>
-                </label>
-                <div className="code-controls-actions">
-                  <button
-                    className="board-owner-btn"
-                    onClick={() => { setShowSaveCodeModal(true); }}
-                    title="Save current code to history"
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--primary-light)', color: 'var(--primary-color)' }}
-                  >
-                    💾 Save Code
-                  </button>
-                  <button
-                    className="board-owner-btn"
-                    onClick={() => { setVersionPanelType('code'); setShowVersionPanel(true); }}
-                    title="View code version history"
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    🕒 History
-                  </button>
-                  <button
-                    className={`run-code-btn ${isRunning ? 'loading' : ''}`}
-                    onClick={handleRunCode}
-                    disabled={isRunning}
-                    title="Execute Code (Ctrl + Enter)"
-                  >
-                    {isRunning ? '⏳ Running...' : '▶️ Run Code'}
-                  </button>
-                  <button
-                    className="terminal-toggle-btn"
-                    onClick={() => {
-                      setTerminalOpen(prev => !prev);
-                      if (!terminalOpen && codeLanguage === 'html') setShowPreview(true);
-                    }}
-                    title="Toggle Console Output"
-                  >
-                    Console {terminalOpen ? '▼' : '▲'}
-                  </button>
-                </div>
-              </div>
+            <div id="pane-code" className={`workspace-pane ${activeTab === 'code' ? 'active' : ''} upgraded-ide-pane`}>
 
-              <div className="code-workspace-split">
-                <div className="editor-pane">
-                  <Editor
-                    height={isMobile ? (terminalOpen ? "280px" : "400px") : (terminalOpen ? "380px" : "560px")}
-                    language={codeLanguage}
-                    theme={theme === 'dark' ? 'vs-dark' : 'vs'}
-                    value={codeContent}
-                    onChange={handleCodeChange}
-                    onMount={(editor, monaco) => {
-                      monacoRef.current = editor;
-                      // Bind Cmd/Ctrl + Enter shortcut to run compilation directly from editor
-                      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-                        if (handleRunCodeRef.current) handleRunCodeRef.current();
-                      });
-                    }}
-                    options={{
-                      fontSize: 14,
-                      fontFamily: "'JetBrains Mono', Courier, monospace",
-                      minimap: { enabled: true },
-                      lineNumbers: 'on',
-                      roundedSelection: true,
-                      scrollBeyondLastLine: false,
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      automaticLayout: true
-                    }}
-                  />
-                </div>
-
-                {terminalOpen && (
-                  <div className="terminal-pane">
-                    <div className="terminal-header">
-                      <span className="terminal-title">
-                        {codeLanguage === 'html' ? 'Live Preview Canvas' : 'Console Terminal Output'}
-                      </span>
-                      <div className="terminal-actions">
-                        <button
-                          onClick={() => {
-                            if (codeLanguage === 'html') {
-                              setShowPreview(false);
-                              setTimeout(() => setShowPreview(true), 50);
-                            } else {
-                              setTerminalOutput('');
-                            }
-                          }}
-                        >
-                          Clear
-                        </button>
-                        <button onClick={() => setTerminalOpen(false)}>Close</button>
-                      </div>
-                    </div>
-                    <div className="terminal-body">
-                      {codeLanguage === 'html' && showPreview ? (
-                        <iframe
-                          srcDoc={codeContent}
-                          title="HTML Live Preview"
-                          sandbox="allow-scripts"
-                          className="html-live-iframe"
-                        />
+              {/* Command Palette Overlay */}
+              {showCommandPalette && (
+                <div className="command-palette-overlay" onClick={() => setShowCommandPalette(false)}>
+                  <div className="command-palette-modal" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      className="command-palette-input"
+                      placeholder="Type a command to execute... (Theme, Format, File, Run)"
+                      autoFocus
+                      value={commandPaletteQuery}
+                      onChange={e => setCommandPaletteQuery(e.target.value)}
+                    />
+                    <div className="command-palette-list">
+                      {filteredCommands.length > 0 ? (
+                        filteredCommands.map((cmd, idx) => (
+                          <div
+                            key={idx}
+                            className="command-palette-item"
+                            onClick={() => {
+                              cmd.action();
+                              setShowCommandPalette(false);
+                              setCommandPaletteQuery('');
+                            }}
+                          >
+                            <span>⚡</span>
+                            <span>{cmd.label}</span>
+                          </div>
+                        ))
                       ) : (
-                        <pre className="terminal-pre">{terminalOutput || 'Click "Run" to execute the code...'}</pre>
+                        <div className="command-palette-empty">No matching commands found.</div>
                       )}
                     </div>
                   </div>
+                </div>
+              )}
+
+              <div className="ide-main-container">
+                {/* 1. Activity Bar (Leftmost vertical dock) */}
+                <div className="ide-activity-bar">
+                  <div className="activity-bar-items">
+                    <button
+                      className={`activity-btn ${sidebarActiveView === 'explorer' ? 'active' : ''}`}
+                      onClick={() => setSidebarActiveView('explorer')}
+                      title="File Explorer"
+                    >
+                      📁
+                    </button>
+                    <button
+                      className={`activity-btn ${sidebarActiveView === 'search' ? 'active' : ''}`}
+                      onClick={() => setSidebarActiveView('search')}
+                      title="Search Project"
+                    >
+                      🔍
+                    </button>
+                    <button
+                      className={`activity-btn ${sidebarActiveView === 'users' ? 'active' : ''}`}
+                      onClick={() => setSidebarActiveView('users')}
+                      title="Collaboration & Presence"
+                    >
+                      👥
+                    </button>
+                    <button
+                      className={`activity-btn ${sidebarActiveView === 'settings' ? 'active' : ''}`}
+                      onClick={() => setSidebarActiveView('settings')}
+                      title="Editor Settings"
+                    >
+                      ⚙️
+                    </button>
+                    <button
+                      className={`activity-btn ${sidebarActiveView === 'timeline' ? 'active' : ''}`}
+                      onClick={() => setSidebarActiveView('timeline')}
+                      title="Room Activity Log"
+                    >
+                      🕒
+                    </button>
+                  </div>
+                  <div className="activity-bar-footer">
+                    <button
+                      className={`activity-btn ${aiPanelOpen ? 'active' : ''}`}
+                      onClick={() => setAiPanelOpen(!aiPanelOpen)}
+                      title="AI Coding Assistant"
+                    >
+                      🤖
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Sidebar Panel (Explorer, Search, presence stats, etc.) */}
+                <div className="ide-sidebar-panel">
+                  {sidebarActiveView === 'explorer' && (
+                    <div className="sidebar-view explorer-view">
+                      <div className="sidebar-section-header">
+                        <span>WORKSPACE FILES</span>
+                        <div className="explorer-header-actions">
+                          <button onClick={() => { const fn = prompt('Enter new file path (e.g. index.js):'); if (fn) createFile(fn); }} title="New File">📄+</button>
+                          <button onClick={() => { const fn = prompt('Enter new folder path (e.g. src):'); if (fn) { createFile(`${fn}/.keep`); } }} title="New Folder">📁+</button>
+                        </div>
+                      </div>
+
+                      <div className="file-search-bar-wrapper">
+                        <input
+                          type="text"
+                          className="file-search-bar"
+                          placeholder="Filter files..."
+                          value={fileSearchQuery}
+                          onChange={e => setFileSearchQuery(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Recents Collapsible List */}
+                      {recentFiles.length > 0 && (
+                        <div className="sidebar-collapsible-section" style={{ marginBottom: '8px' }}>
+                          <div className="sidebar-section-header"><span>🕒 Recent Files</span></div>
+                          <div className="recent-files-list">
+                            {recentFiles.map(fp => {
+                              if (!files[fp]) return null;
+                              return (
+                                <div key={fp} className="file-node-item file-item" onClick={() => selectFile(fp)} style={{ padding: '3px 8px' }}>
+                                  {getFileIcon(fp)}
+                                  <span className="node-name" style={{ fontSize: '0.8rem' }}>{fp.split('/').pop()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Favorites Collapsible List */}
+                      {favoriteFiles.length > 0 && (
+                        <div className="sidebar-collapsible-section" style={{ marginBottom: '8px' }}>
+                          <div className="sidebar-section-header"><span>⭐ Starred Files</span></div>
+                          <div className="favorite-files-list">
+                            {favoriteFiles.map(fp => {
+                              if (!files[fp]) return null;
+                              return (
+                                <div key={fp} className="file-node-item file-item" onClick={() => selectFile(fp)} style={{ padding: '3px 8px' }}>
+                                  {getFileIcon(fp)}
+                                  <span className="node-name" style={{ fontSize: '0.8rem' }}>{fp.split('/').pop()}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="file-tree-container">
+                        {renderFileTree(buildFileTree(
+                          Object.keys(files)
+                            .filter(f => f.toLowerCase().includes(fileSearchQuery.toLowerCase()))
+                            .reduce((acc, curr) => { acc[curr] = files[curr]; return acc; }, {})
+                        ))}
+                      </div>
+
+                      {/* Code Outline Section */}
+                      {outlineSymbols.length > 0 && (
+                        <div className="sidebar-collapsible-section" style={{ marginTop: '14px', borderTop: '1px solid var(--ide-border)', paddingTop: '10px' }}>
+                          <div className="sidebar-section-header"><span>🧬 OUTLINE</span></div>
+                          <div className="outline-symbols-list" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                            {outlineSymbols.map((sym, idx) => (
+                              <div
+                                key={idx}
+                                className="outline-symbol-item"
+                                onClick={() => {
+                                  if (monacoRef.current) {
+                                    monacoRef.current.revealLineInCenter(sym.line);
+                                    monacoRef.current.setPosition({ lineNumber: sym.line, column: 1 });
+                                    monacoRef.current.focus();
+                                  }
+                                }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', padding: '4px', cursor: 'pointer' }}
+                              >
+                                <span style={{ opacity: 0.6 }}>{sym.type === 'class' ? '🔷' : '⚡'}</span>
+                                <span className="symbol-name">{sym.name}</span>
+                                <span style={{ color: 'var(--ide-muted)', marginLeft: 'auto', fontSize: '0.7rem' }}>L{sym.line}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {sidebarActiveView === 'search' && (
+                    <div className="sidebar-view search-view">
+                      <div className="sidebar-section-header">
+                        <span>SEARCH IN PROJECT</span>
+                      </div>
+                      <div className="project-search-form">
+                        <input
+                          type="text"
+                          className="project-search-input"
+                          placeholder="Search text..."
+                          value={projectSearchQuery}
+                          onChange={e => setProjectSearchQuery(e.target.value)}
+                        />
+                        <div className="search-options-row">
+                          <label className={`search-opt-btn ${projectSearchCase ? 'active' : ''}`}>
+                            <input type="checkbox" checked={projectSearchCase} onChange={e => setProjectSearchCase(e.target.checked)} style={{ display: 'none' }} />
+                            Cc
+                          </label>
+                          <label className={`search-opt-btn ${projectSearchWord ? 'active' : ''}`}>
+                            <input type="checkbox" checked={projectSearchWord} onChange={e => setProjectSearchWord(e.target.checked)} style={{ display: 'none' }} />
+                            W
+                          </label>
+                          <label className={`search-opt-btn ${projectSearchRegex ? 'active' : ''}`}>
+                            <input type="checkbox" checked={projectSearchRegex} onChange={e => setProjectSearchRegex(e.target.checked)} style={{ display: 'none' }} />
+                            .*
+                          </label>
+                        </div>
+
+                        {/* Replace field overlay */}
+                        <div className="project-replace-container" style={{ marginTop: '8px', borderTop: '1px solid var(--ide-border)', paddingTop: '10px' }}>
+                          <input
+                            type="text"
+                            className="project-search-input"
+                            placeholder="Replace with..."
+                            value={projectReplaceQuery}
+                            onChange={e => setProjectReplaceQuery(e.target.value)}
+                          />
+                          <button
+                            className="tabs-act-btn run-btn"
+                            onClick={handleReplaceAll}
+                            style={{ width: '100%', marginTop: '6px', height: '28px', padding: '0' }}
+                          >
+                            Replace All Matches
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="project-search-results">
+                        {projectSearchResults.length > 0 ? (
+                          projectSearchResults.map((res, idx) => (
+                            <div
+                              key={idx}
+                              className="search-result-item"
+                              style={{ position: 'relative' }}
+                              onClick={() => selectSearchResult(res.path, res.lineNumber)}
+                            >
+                              <div className="result-file-path">{res.path} : L{res.lineNumber}</div>
+                              <div className="result-snippet">{res.lineContent}</div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReplaceOne(res.path, res.lineNumber, res.lineContent);
+                                }}
+                                style={{ position: 'absolute', right: '6px', top: '6px', background: 'rgba(255,255,255,0.06)', border: 'none', color: '#c9ccd3', borderRadius: '4px', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}
+                                title="Replace only this occurrence"
+                              >
+                                Replace
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          projectSearchQuery && <div className="no-results">No matches found.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {sidebarActiveView === 'users' && (
+                    <div className="sidebar-view collaboration-presence-view">
+                      <div className="sidebar-section-header">
+                        <span>PARTICIPANTS</span>
+                      </div>
+                      <div className="presence-users-list">
+                        <div className="presence-user-item self-presence" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="presence-dot active">🟢</span>
+                            <span className="username-label">{username || 'Anonymous'} (You)</span>
+                          </div>
+                          <span className="role-label" style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#3b82f6', borderRadius: '4px', fontWeight: 600 }}>{userRole}</span>
+                        </div>
+                        {users.map(u => {
+                          const otherCursor = Object.values(presenceCursors).find(p => p.username === u.username);
+                          return (
+                            <div key={u.username} className="presence-user-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="presence-dot active">🟢</span>
+                                <span className="username-label">{u.username}</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span className="editing-badge" style={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                                  {otherCursor ? otherCursor.path.split('/').pop() : 'Viewing'}
+                                </span>
+                                {isOwner && (
+                                  <select
+                                    value={u.role || 'Editor'}
+                                    onChange={(e) => {
+                                      socketRef.current?.emit('chat message', {
+                                        room: projectName,
+                                        msg: `[ROLE] ${u.username} set to ${e.target.value}`
+                                      });
+                                      addToast(`${u.username} role updated to ${e.target.value}`, 'info');
+                                    }}
+                                    style={{ background: 'var(--ide-bg)', border: '1px solid var(--ide-border)', color: 'var(--ide-text)', fontSize: '0.65rem', borderRadius: '4px', padding: '2px' }}
+                                  >
+                                    <option value="Editor">Editor</option>
+                                    <option value="Viewer">Viewer</option>
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {sidebarActiveView === 'settings' && (
+                    <div className="sidebar-view settings-view">
+                      <div className="sidebar-section-header">
+                        <span>EDITOR SETTINGS</span>
+                      </div>
+                      <div className="settings-controls">
+                        <div className="setting-row">
+                          <label>Font Size ({editorFontSize}px)</label>
+                          <input
+                            type="range"
+                            min="10"
+                            max="28"
+                            value={editorFontSize}
+                            onChange={e => setEditorFontSize(parseInt(e.target.value))}
+                          />
+                        </div>
+                        <div className="setting-row">
+                          <label>Line Height ({editorLineHeight}px)</label>
+                          <input
+                            type="range"
+                            min="16"
+                            max="36"
+                            value={editorLineHeight}
+                            onChange={e => setEditorLineHeight(parseInt(e.target.value))}
+                          />
+                        </div>
+                        <div className="setting-row">
+                          <label>Word Wrap</label>
+                          <select value={editorWordWrap} onChange={e => setEditorWordWrap(e.target.value)}>
+                            <option value="on">On</option>
+                            <option value="off">Off</option>
+                          </select>
+                        </div>
+                        <div className="setting-row">
+                          <label>Tab Size</label>
+                          <select value={editorTabSize} onChange={e => setEditorTabSize(parseInt(e.target.value))}>
+                            <option value="2">2 Spaces</option>
+                            <option value="4">4 Spaces</option>
+                          </select>
+                        </div>
+                        <div className="setting-row">
+                          <label>Editor Theme</label>
+                          <select value={editorTheme} onChange={e => setEditorTheme(e.target.value)}>
+                            <option value="vs-dark">VS Dark</option>
+                            <option value="vs-light">VS Light</option>
+                            <option value="dracula">Dracula</option>
+                            <option value="nord">Nord</option>
+                            <option value="solarized">Solarized Dark</option>
+                          </select>
+                        </div>
+
+                        {/* Minimap / Sticky Toggles */}
+                        <div className="setting-row" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px solid var(--ide-border)', paddingTop: '10px' }}>
+                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
+                            <input type="checkbox" checked={editorMinimap} onChange={e => setEditorMinimap(e.target.checked)} />
+                            Enable Minimap
+                          </label>
+                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
+                            <input type="checkbox" checked={editorStickyScroll} onChange={e => setEditorStickyScroll(e.target.checked)} />
+                            Enable Sticky Scroll
+                          </label>
+                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
+                            <input type="checkbox" checked={editorLineNumbers} onChange={e => setEditorLineNumbers(e.target.checked)} />
+                            Show Line Numbers
+                          </label>
+                          <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem' }}>
+                            <input type="checkbox" checked={editorFormatOnSave} onChange={e => setEditorFormatOnSave(e.target.checked)} />
+                            Format on Save
+                          </label>
+                        </div>
+
+                        {/* ZIP Exporter */}
+                        <div className="setting-row" style={{ marginTop: '16px' }}>
+                          <button className="tabs-act-btn run-btn" onClick={handleExportAsZip} style={{ width: '100%', height: '32px' }}>
+                            📦 Export Project as ZIP
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {sidebarActiveView === 'timeline' && (
+                    <div className="sidebar-view timeline-view">
+                      <div className="sidebar-section-header">
+                        <span>WORKSPACE LOGS</span>
+                        <button
+                          onClick={() => { setActivityLog([]); }}
+                          title="Clear Log"
+                          style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                      <div className="timeline-logs-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+                        {activityLog.length > 0 ? (
+                          [...activityLog].reverse().map((evt, idx) => (
+                            <div key={idx} className="timeline-log-item" style={{ padding: '6px', borderBottom: '1px solid var(--border-color)', fontSize: '0.78rem' }}>
+                              <div className="log-time" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                {new Date(evt.timestamp).toLocaleTimeString()}
+                              </div>
+                              <div className="log-text" style={{ color: 'var(--text-color)', marginTop: '2px' }}>
+                                {evt.text}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="no-logs" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', paddingTop: '20px' }}>
+                            No events logged yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Main Editor Column */}
+                <div className="ide-editor-column">
+                  {/* Tabs Bar */}
+                  <div className="ide-tabs-bar" style={{ display: 'flex', alignItems: 'center' }}>
+                    {openTabs.map(tabPath => {
+                      const file = files[tabPath];
+                      if (!file) return null;
+                      const isActive = activeFilePath === tabPath;
+                      const isPinned = pinnedTabs.includes(tabPath);
+                      return (
+                        <div
+                          key={tabPath}
+                          className={`editor-tab-item ${isActive ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
+                          onClick={() => selectFile(tabPath)}
+                          style={{ position: 'relative' }}
+                        >
+                          {getFileIcon(tabPath)}
+                          <span className="tab-name" style={{ marginRight: '6px' }}>{file.name}</span>
+
+                          {/* Unsaved indicator */}
+                          {unsavedFiles[tabPath] && <span className="tab-unsaved-dot" style={{ background: '#f59e0b', width: '6px', height: '6px', borderRadius: '50%', display: 'inline-block', marginRight: '6px' }}></span>}
+
+                          {/* Pin option */}
+                          <button
+                            onClick={(e) => togglePinTab(tabPath, e)}
+                            style={{ background: 'transparent', border: 'none', color: isPinned ? '#10b981' : '#4b5563', cursor: 'pointer', padding: '0 2px', fontSize: '0.72rem' }}
+                            title="Pin Tab"
+                          >
+                            📌
+                          </button>
+
+                          {/* Close Option */}
+                          {!isPinned && (
+                            <button className="tab-close-btn" onClick={(e) => closeTabWithHistory(tabPath, e)}>×</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="tabs-bar-spacer" />
+
+                    {/* Reopen Closed Tab Option */}
+                    {closedTabsHistory.length > 0 && (
+                      <button
+                        onClick={reopenLastClosedTab}
+                        className="tabs-act-btn outline-btn"
+                        style={{ height: '24px', fontSize: '0.7rem', padding: '0 6px', marginRight: '8px' }}
+                        title="Reopen last closed tab (Ctrl+Shift+T)"
+                      >
+                        ↩️ Reopen Tab
+                      </button>
+                    )}
+
+                    {/* Review Mode Toggle Badge */}
+                    <button
+                      onClick={() => setCodeReviewMode(prev => !prev)}
+                      className={`tabs-act-btn ${codeReviewMode ? 'run-btn' : 'outline-btn'}`}
+                      style={{ height: '24px', fontSize: '0.7rem', padding: '0 6px', marginRight: '8px' }}
+                      title="Toggle Review Mode"
+                    >
+                      👁️ {codeReviewMode ? 'Review Mode: On' : 'Review Mode'}
+                    </button>
+                    {/* Collaborative Avatars Bar */}
+                    <div className="ide-presence-avatars-row">
+                      {users.slice(0, 4).map(u => {
+                        const col = presenceColors[Math.abs(u.username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % presenceColors.length];
+                        return (
+                          <div
+                            key={u.username}
+                            className="presence-avatar-circle"
+                            style={{ backgroundColor: col }}
+                            title={`${u.username} is editing`}
+                          >
+                            {u.username.slice(0, 2).toUpperCase()}
+                          </div>
+                        );
+                      })}
+                      {users.length > 4 && (
+                        <div className="presence-avatar-circle more-badge" title="More active users">
+                          +{users.length - 4}
+                        </div>
+                      )}
+                    </div>
+                    {/* Run / Format buttons inside tabs bar */}
+                    <div className="tabs-action-buttons">
+                      <button onClick={() => setShowCommandPalette(true)} className="tabs-act-btn outline-btn" title="Command Palette (Ctrl+Shift+P)">
+                        ⌨️
+                      </button>
+                      <button onClick={formatActiveDocument} className="tabs-act-btn outline-btn" title="Format Document">
+                        ✨ Format
+                      </button>
+                      <button
+                        onClick={handleRunCode}
+                        className={`tabs-act-btn run-btn ${terminalIsRunning ? 'loading' : ''}`}
+                        disabled={terminalIsRunning}
+                        title="Run Code (Ctrl + Enter)"
+                      >
+                        {terminalIsRunning ? '⏳ Executing...' : '▶ Run'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Breadcrumbs Bar */}
+                  {activeFilePath && (
+                    <div className="ide-breadcrumbs-bar" style={{ padding: '6px 16px', background: 'rgba(0, 0, 0, 0.12)', borderBottom: '1px solid var(--ide-border)', fontSize: '0.75rem', color: 'var(--ide-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📁 {projectName || 'root'}</span>
+                      {activeFilePath.split('/').map((p, idx) => (
+                        <span key={idx}>&gt; {p}</span>
+                      ))}
+                      {Object.keys(typingUsers).length > 0 && (
+                        <span className="typing-indicator" style={{ marginLeft: 'auto', color: '#10b981', animation: 'pulse 1.5s infinite' }}>
+                          ✍️ {Object.keys(typingUsers).join(', ')} typing...
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Monaco Editor Pane */}
+                  <div className="ide-monaco-wrapper">
+                    {activeFilePath && files[activeFilePath] ? (
+                      <Editor
+                        height="100%"
+                        language={files[activeFilePath].language}
+                        theme={editorTheme === 'dracula' || editorTheme === 'nord' || editorTheme === 'solarized' ? editorTheme : (editorTheme === 'vs-light' ? 'vs' : 'vs-dark')}
+                        value={files[activeFilePath].content}
+                        onChange={handleCodeChange}
+                        onMount={handleEditorDidMount}
+                        options={{
+                          fontSize: editorFontSize,
+                          fontFamily: editorFontFamily,
+                          lineHeight: editorLineHeight,
+                          wordWrap: editorWordWrap,
+                          tabSize: editorTabSize,
+                          minimap: { enabled: editorMinimap },
+                          lineNumbers: editorLineNumbers ? 'on' : 'off',
+                          roundedSelection: true,
+                          scrollBeyondLastLine: false,
+                          cursorBlinking: 'smooth',
+                          cursorSmoothCaretAnimation: 'on',
+                          automaticLayout: true,
+                          stickyScroll: { enabled: editorStickyScroll },
+                          readOnly: userRole === 'Viewer'
+                        }}
+                      />
+                    ) : (
+                      <div className="empty-editor-placeholder">
+                        <div className="placeholder-content">
+                          <h3>AnonHub Collaborative IDE</h3>
+                          <p>Select or create a file from the explorer sidebar to begin editing.</p>
+                          <div className="shortcut-guide">
+                            <div><span>Ctrl + Shift + P</span> Command Palette</div>
+                            <div><span>Ctrl + Enter</span> Run Active File</div>
+                            <div><span>Ctrl + S</span> Manual Snapshot Save</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status Bar */}
+                  <div className="ide-status-bar">
+                    <span className="status-item font-semibold">
+                      {saveStatus === 'Saving...' ? '⏳ Autosaving...' : '✅ Saved'}
+                    </span>
+                    <span className="status-item text-xs text-muted">
+                      Last Saved: {lastSavedTime}
+                    </span>
+                    <span className="status-item-spacer" />
+                    {activeFilePath && (
+                      <>
+                        <span className="status-item uppercase">{files[activeFilePath]?.language}</span>
+                        <span className="status-item">UTF-8</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. AI Coding Assistant Sidebar */}
+                {aiPanelOpen && (
+                  <div className="ide-ai-panel">
+                    <div className="ai-panel-header">
+                      <span>🤖 AI Assistant</span>
+                      <button onClick={() => setAiPanelOpen(false)}>×</button>
+                    </div>
+                    <div className="ai-shortkey-actions" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                      <button onClick={() => handleAiAction('explain')} title="Explain Selected Code">Explain</button>
+                      <button onClick={() => handleAiAction('fix')} title="Find & Fix Bugs">Fix Bugs</button>
+                      <button onClick={() => handleAiAction('optimize')} title="Optimize Code">Optimize</button>
+                      <button onClick={() => handleAiAction('refactor')} title="Refactor Code">Refactor</button>
+                      <button onClick={() => handleAiAction('comments')} title="Add Inline Comments">Add Comments</button>
+                      <button onClick={() => handleAiAction('tests')} title="Generate Unit Tests">Gen Tests</button>
+                      <button onClick={() => handleAiAction('convert')} title="Convert Code Language">Convert Code</button>
+                      <button onClick={() => handleAiAction('error')} title="Explain Compiler Errors">Fix Compile Error</button>
+                    </div>
+                    <div className="ai-chat-history">
+                      {aiLogs.length > 0 ? (
+                        aiLogs.map((logItem, idx) => (
+                          <div key={idx} className={`ai-chat-bubble ${logItem.role === 'user' ? 'user-bubble' : 'model-bubble'}`}>
+                            <div className="bubble-sender">{logItem.role === 'user' ? 'You' : 'Gemini AI'}</div>
+                            <div className="bubble-text" style={{ whiteSpace: 'pre-wrap' }}>{logItem.text}</div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="ai-chat-placeholder">
+                          Ask questions, fix bugs, optimize algorithms, or explain code selections.
+                        </div>
+                      )}
+                      {aiLoading && <div className="ai-loading-indicator">⏳ Thinking...</div>}
+                    </div>
+                    <form
+                      className="ai-chat-input-wrapper"
+                      onSubmit={e => {
+                        e.preventDefault();
+                        sendAiMessage(aiMessageInput);
+                      }}
+                    >
+                      <input
+                        type="text"
+                        className="ai-chat-input"
+                        placeholder="Ask Gemini anything..."
+                        value={aiMessageInput}
+                        onChange={e => setAiMessageInput(e.target.value)}
+                      />
+                      <button type="submit" disabled={aiLoading}>Send</button>
+                    </form>
+                  </div>
                 )}
               </div>
+
+              {/* Bottom Multi-Tab Panel (Console, Problems, Reviews, snapshots) */}
+              {terminalOpen && (
+                <div className="ide-bottom-terminal">
+                  <div className="terminal-panel-header" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                    <div className="terminal-tabs-row" style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        className={`terminal-tab-btn ${bottomTerminalActiveTab === 'console' ? 'active' : ''}`}
+                        onClick={() => setBottomTerminalActiveTab('console')}
+                        style={{ background: 'transparent', border: 'none', color: bottomTerminalActiveTab === 'console' ? 'var(--ide-accent)' : 'var(--ide-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
+                      >
+                        💻 Console Shell
+                      </button>
+                      <button
+                        className={`terminal-tab-btn ${bottomTerminalActiveTab === 'problems' ? 'active' : ''}`}
+                        onClick={() => setBottomTerminalActiveTab('problems')}
+                        style={{ background: 'transparent', border: 'none', color: bottomTerminalActiveTab === 'problems' ? 'var(--ide-accent)' : 'var(--ide-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
+                      >
+                        ⚠️ Problems ({editorMarkers.length})
+                      </button>
+                      <button
+                        className={`terminal-tab-btn ${bottomTerminalActiveTab === 'reviews' ? 'active' : ''}`}
+                        onClick={() => setBottomTerminalActiveTab('reviews')}
+                        style={{ background: 'transparent', border: 'none', color: bottomTerminalActiveTab === 'reviews' ? 'var(--ide-accent)' : 'var(--ide-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
+                      >
+                        💬 Code Reviews
+                      </button>
+                      <button
+                        className={`terminal-tab-btn ${bottomTerminalActiveTab === 'snapshots' ? 'active' : ''}`}
+                        onClick={() => setBottomTerminalActiveTab('snapshots')}
+                        style={{ background: 'transparent', border: 'none', color: bottomTerminalActiveTab === 'snapshots' ? 'var(--ide-accent)' : 'var(--ide-muted)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: '4px 8px' }}
+                      >
+                        🕒 Snapshots ({snapshots.length})
+                      </button>
+                    </div>
+
+                    {bottomTerminalActiveTab === 'console' && terminalStats && (
+                      <span className="terminal-stats-badge">
+                        ⏱️ {terminalStats.time} | 💾 {terminalStats.memory} | Status: {terminalStats.status}
+                      </span>
+                    )}
+
+                    <div className="terminal-panel-actions" style={{ marginLeft: 'auto' }}>
+                      {bottomTerminalActiveTab === 'console' && terminalIsRunning && (
+                        <button onClick={handleStopExecution} style={{ color: '#ff5555', borderColor: '#ff5555', marginRight: '6px' }}>Stop</button>
+                      )}
+                      <button onClick={() => { setTerminalOutput(''); setTerminalStats(null); }}>Clear Output</button>
+                      <button onClick={() => setTerminalOpen(false)}>×</button>
+                    </div>
+                  </div>
+
+                  <div className="terminal-panel-content-area" style={{ flex: 1, overflow: 'hidden' }}>
+                    {bottomTerminalActiveTab === 'console' && (
+                      <div className="terminal-panel-body-grid" style={{ height: '100%' }}>
+                        {/* Left: stdin inputs */}
+                        <div className="terminal-input-column">
+                          <div className="column-label">User Input (stdin)</div>
+                          <textarea
+                            className="terminal-textarea input-textarea"
+                            placeholder="Type program input data here before running..."
+                            value={terminalStdin}
+                            onChange={e => setTerminalStdin(e.target.value)}
+                          />
+                        </div>
+                        {/* Right: stdout/stderr outputs */}
+                        <div className="terminal-output-column">
+                          <div className="column-label">Program Output (stdout/stderr)</div>
+                          {files[activeFilePath]?.language === 'html' && showPreview ? (
+                            <iframe
+                              srcDoc={files[activeFilePath]?.content}
+                              title="HTML Live Preview"
+                              sandbox="allow-scripts"
+                              className="html-live-iframe"
+                              style={{ width: '100%', height: 'calc(100% - 20px)', border: 'none', background: 'white' }}
+                            />
+                          ) : (
+                            <pre className="terminal-output-pre">{terminalOutput || 'Shell console output idle.'}</pre>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {bottomTerminalActiveTab === 'problems' && (
+                      <div className="problems-tab-body" style={{ padding: '12px', overflowY: 'auto', height: '100%' }}>
+                        {editorMarkers.length > 0 ? (
+                          editorMarkers.map((marker, idx) => (
+                            <div
+                              key={idx}
+                              className={`problem-item ${marker.severity === 8 ? 'error' : 'warning'}`}
+                              onClick={() => {
+                                if (monacoRef.current) {
+                                  monacoRef.current.revealLineInCenter(marker.startLineNumber);
+                                  monacoRef.current.setPosition({ lineNumber: marker.startLineNumber, column: marker.startColumn });
+                                  monacoRef.current.focus();
+                                }
+                              }}
+                              style={{ padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.78rem', cursor: 'pointer', display: 'flex', gap: '8px', color: marker.severity === 8 ? '#ff5555' : '#ffb86c' }}
+                            >
+                              <span>{marker.severity === 8 ? '❌ Error' : '⚠️ Warning'}</span>
+                              <span>Line {marker.startLineNumber}:</span>
+                              <span style={{ color: 'var(--ide-text)' }}>{marker.message}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="no-problems" style={{ padding: '12px', color: 'var(--ide-muted)', fontSize: '0.8rem', textAlign: 'center' }}>
+                            No problems detected in active document.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {bottomTerminalActiveTab === 'reviews' && (
+                      <div className="reviews-tab-body" style={{ padding: '12px', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            type="number"
+                            placeholder="Line"
+                            style={{ width: '60px', background: '#0d0d11', border: '1px solid var(--ide-border)', color: '#fff', padding: '6px', borderRadius: '4px' }}
+                            value={activeReviewCommentLine || ''}
+                            onChange={e => setActiveReviewCommentLine(parseInt(e.target.value))}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Add review feedback for this line..."
+                            style={{ flex: 1, background: '#0d0d11', border: '1px solid var(--ide-border)', color: '#fff', padding: '6px', borderRadius: '4px' }}
+                            value={reviewCommentInput}
+                            onChange={e => setReviewCommentInput(e.target.value)}
+                          />
+                          <button className="tabs-act-btn run-btn" onClick={() => addInlineComment(activeReviewCommentLine)} style={{ padding: '0 12px' }}>
+                            Comment
+                          </button>
+                        </div>
+                        <div className="reviews-comments-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {(inlineComments[activeFilePath] || []).length > 0 ? (
+                            (inlineComments[activeFilePath] || []).map((comm, idx) => (
+                              <div key={idx} style={{ padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.78rem' }}>
+                                <span style={{ color: '#38bdf8', fontWeight: 600 }}>L{comm.line}</span> | <strong>{comm.author}:</strong> <span style={{ color: '#e5e7eb' }}>{comm.text}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ color: 'var(--ide-muted)', fontSize: '0.8rem', textAlign: 'center', paddingTop: '10px' }}>No review comments for this file.</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {bottomTerminalActiveTab === 'snapshots' && (
+                      <div className="snapshots-tab-body" style={{ padding: '12px', overflowY: 'auto', height: '100%', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {snapshots.length > 0 ? (
+                          snapshots.map((snap, idx) => (
+                            <button
+                              key={idx}
+                              className="tabs-act-btn outline-btn"
+                              onClick={() => restoreSnapshot(snap)}
+                              style={{ fontSize: '0.72rem', height: '30px' }}
+                            >
+                              Restore frame ({new Date(snap.timestamp).toLocaleTimeString()})
+                            </button>
+                          ))
+                        ) : (
+                          <div style={{ color: 'var(--ide-muted)', fontSize: '0.8rem', width: '100%', textAlign: 'center', paddingTop: '10px' }}>
+                            No automatic history snapshots stored yet. Snapshots save every minute.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Toast Notifications Overlay */}
+              <div className="ide-toast-container" style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 9999 }}>
+                {toasts.map(toast => (
+                  <div key={toast.id} className={`ide-toast toast-${toast.type}`} style={{ minWidth: '220px', padding: '12px 16px', borderRadius: '8px', color: '#fff', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)', background: toast.type === 'success' ? '#10b981' : (toast.type === 'error' ? '#ff5555' : (toast.type === 'warning' ? '#ffb86c' : '#3b82f6')) }}>
+                    <span>{toast.message}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Right Click Context Menu Overlay */}
+              {showRightClickMenu && (
+                <div className="right-click-menu-overlay" onClick={() => setShowRightClickMenu(false)} onContextMenu={(e) => { e.preventDefault(); setShowRightClickMenu(false); }} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 9999 }}>
+                  <div className="context-menu" style={{ position: 'absolute', top: rightClickMenuPos.y, left: rightClickMenuPos.x, background: 'var(--ide-card)', border: '1px solid var(--ide-border)', borderRadius: '8px', padding: '4px 0', minWidth: '150px', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', pointerEvents: 'auto' }}>
+                    <div className="context-menu-item" onClick={() => {
+                      if (activeRightClickPath) {
+                        setPinnedTabs(prev => prev.includes(activeRightClickPath) ? prev.filter(t => t !== activeRightClickPath) : [...prev, activeRightClickPath]);
+                        addToast('Tab Pin state updated.', 'info');
+                      }
+                      setShowRightClickMenu(false);
+                    }} style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', gap: '8px', color: 'var(--ide-text)' }}>
+                      📌 {pinnedTabs.includes(activeRightClickPath) ? 'Unpin File' : 'Pin File'}
+                    </div>
+                    <div className="context-menu-item" onClick={(e) => {
+                      if (activeRightClickPath) toggleFavoriteFile(activeRightClickPath, e);
+                      setShowRightClickMenu(false);
+                    }} style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', gap: '8px', color: 'var(--ide-text)' }}>
+                      ⭐ {favoriteFiles.includes(activeRightClickPath) ? 'Remove Favorite' : 'Add Favorite'}
+                    </div>
+                    <div className="context-menu-item" onClick={() => {
+                      if (activeRightClickPath) {
+                        const np = prompt('Rename file to:', activeRightClickPath);
+                        if (np) renameFile(activeRightClickPath, np);
+                      }
+                      setShowRightClickMenu(false);
+                    }} style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', gap: '8px', color: 'var(--ide-text)' }}>
+                      ✏️ Rename File
+                    </div>
+                    <div className="context-menu-item" onClick={() => {
+                      if (activeRightClickPath && confirm(`Delete ${activeRightClickPath}?`)) {
+                        deleteFile(activeRightClickPath);
+                      }
+                      setShowRightClickMenu(false);
+                    }} style={{ padding: '8px 12px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', gap: '8px', color: '#ff5555' }}>
+                      🗑️ Delete File
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 4. Smart Notes Pane */}
@@ -2358,7 +4595,7 @@ export default function ProjectRoom() {
                       if (!newPollQuestion.trim()) return alert('Please enter a question');
                       const filteredOpts = newPollOptions.filter(o => o.trim() !== '');
                       if (filteredOpts.length < 2) return alert('Please provide at least 2 options');
-                      
+
                       const newPoll = {
                         id: 'poll_' + Math.random().toString(36).substr(2, 9),
                         question: newPollQuestion,
@@ -2366,7 +4603,7 @@ export default function ProjectRoom() {
                         createdAt: Date.now(),
                         expiresAt: Date.now() + (pollExpirationMinutes * 60 * 1000)
                       };
-                      
+
                       const updatedPolls = [newPoll, ...polls];
                       setPolls(updatedPolls);
                       socketRef.current?.emit('update polls', { projectName, polls: JSON.stringify(updatedPolls) });
@@ -2399,7 +4636,7 @@ export default function ProjectRoom() {
                               {isExpired ? 'Expired' : 'Active'}
                             </span>
                           </div>
-                          
+
                           <div className="poll-options-list">
                             {poll.options.map((opt, oIdx) => {
                               const pct = totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0;
@@ -2432,7 +4669,7 @@ export default function ProjectRoom() {
                                         });
                                         setPolls(updatedPolls);
                                         socketRef.current?.emit('update polls', { projectName, polls: JSON.stringify(updatedPolls) });
-                                        
+
                                         const newVotedList = [...hasVotedList, poll.id];
                                         localStorage.setItem(`anonhub_voted_polls_${projectName}`, JSON.stringify(newVotedList));
                                         addTimelineEvent(`Voted in poll: "${poll.question}"`);
@@ -2495,11 +4732,11 @@ export default function ProjectRoom() {
                       <option value="cpp">C++</option>
                     </select>
                   </div>
-                  
+
                   <div className="snippets-list">
                     {snippets.filter(s => {
                       const matchQuery = s.title.toLowerCase().includes(snippetsSearch.toLowerCase()) ||
-                                         s.code.toLowerCase().includes(snippetsSearch.toLowerCase());
+                        s.code.toLowerCase().includes(snippetsSearch.toLowerCase());
                       const matchLang = snippetsFilterLang === 'all' || s.language === snippetsFilterLang;
                       return matchQuery && matchLang;
                     }).length === 0 ? (
@@ -2509,7 +4746,7 @@ export default function ProjectRoom() {
                     ) : (
                       snippets.filter(s => {
                         const matchQuery = s.title.toLowerCase().includes(snippetsSearch.toLowerCase()) ||
-                                           s.code.toLowerCase().includes(snippetsSearch.toLowerCase());
+                          s.code.toLowerCase().includes(snippetsSearch.toLowerCase());
                         const matchLang = snippetsFilterLang === 'all' || s.language === snippetsFilterLang;
                         return matchQuery && matchLang;
                       }).map(s => (
@@ -2571,7 +4808,7 @@ export default function ProjectRoom() {
                               </button>
                             </div>
                           </div>
-                          
+
                           <div className="snippet-code-preview-container">
                             <div className="snippet-code-header">
                               Language: {snippet.language}
@@ -2610,7 +4847,7 @@ export default function ProjectRoom() {
                     Clear History
                   </button>
                 </div>
-                
+
                 <div className="timeline-list">
                   {activityLog.length === 0 ? (
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', paddingLeft: '8px' }}>

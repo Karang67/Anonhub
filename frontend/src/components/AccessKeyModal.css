@@ -1,0 +1,108 @@
+/* 🪟 ROOM JOIN OVERLAY MODAL */
+.room-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 32, 0.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.room-overlay-content {
+  background: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 40px;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  text-align: center;
+  animation: overlayFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.room-overlay-content h2 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  border-bottom: none;
+  padding-bottom: 0;
+  line-height: 1.25;
+}
+
+.room-overlay-content p {
+  margin-bottom: 24px;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.room-overlay-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.room-overlay-content .form-control {
+  padding: 14px;
+  width: 100%;
+  border: 1.5px solid var(--border-color);
+  background: var(--light-color);
+  color: var(--text-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: var(--transition);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.room-overlay-content .form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.btn-secondary-modal {
+  padding: 14px;
+  width: 100%;
+  background: transparent;
+  border: 1.5px solid var(--border-color);
+  color: var(--text-color);
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-secondary-modal:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--text-color);
+}
+
+html[data-theme="dark"] .btn-secondary-modal:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

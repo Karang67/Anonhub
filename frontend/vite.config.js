@@ -27,6 +27,8 @@ export default defineConfig({
     }
   },
   server: {
+    host: true,
+    allowedHosts: true,
     proxy: {
       '/create-project': 'http://localhost:3000',
       '/create-office': 'http://localhost:3000',

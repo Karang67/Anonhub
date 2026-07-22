@@ -14,9 +14,32 @@ const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ]
 };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1
+    ? (parts[0][0] + parts[1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  '#7c4dff','#f50057','#00bcd4','#4caf50','#ff5722','#2196f3','#e91e63','#009688'
+];
+
+function getAvatarColor(name) {
+  if (!name) return AVATAR_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [inCall, setInCall] = useState(false);
@@ -26,6 +49,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [peers, setPeers] = useState([]); // [{ socketId, username, stream }]
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [micMutedMap, setMicMutedMap] = useState({}); // { socketId: boolean }
 
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -117,6 +141,58 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       reconnectTimeoutRef.current = null;
     }
     reconnectionAttempts.current = 0;
+  };
+
+  const createPeerConnection = (peerSocketId, peerName, isInitiator) => {
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        socket.emit('webrtc-signal', {
+          targetId: peerSocketId,
+          signal: { candidate: event.candidate }
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams[0];
+      streamsRef.current[peerSocketId] = remoteStream;
+
+      setPeers(prev => {
+        const idx = prev.findIndex(p => p.socketId === peerSocketId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: remoteStream };
+          return updated;
+        } else {
+          return [...prev, { socketId: peerSocketId, username: peerName, stream: remoteStream }];
+        }
+      });
+    };
+
+    pc.onnegotiationneeded = async () => {
+      if (isInitiator) {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-signal', {
+            targetId: peerSocketId,
+            signal: { sdp: pc.localDescription }
+          });
+        } catch (err) {
+          console.error('Negotiation error:', err);
+        }
+      }
+    };
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    return pc;
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -224,11 +300,16 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setPeers(prev => prev.filter(p => p.socketId !== socketId));
     };
 
+    const handlePeerMicStatus = ({ socketId, muted }) => {
+      setMicMutedMap(prev => ({ ...prev, [socketId]: muted }));
+    };
+
     socket.on('connect', handleSocketConnect);
     socket.on('disconnect', handleSocketDisconnect);
     socket.on('webrtc-user-joined', handleUserJoined);
     socket.on('webrtc-signal', handleSignal);
     socket.on('webrtc-user-left', handleUserLeft);
+    socket.on('peer-mic-status', handlePeerMicStatus);
 
     return () => {
       socket.off('connect', handleSocketConnect);
@@ -236,6 +317,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       socket.off('webrtc-user-joined', handleUserJoined);
       socket.off('webrtc-signal', handleSignal);
       socket.off('webrtc-user-left', handleUserLeft);
+      socket.off('peer-mic-status', handlePeerMicStatus);
       
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
@@ -246,64 +328,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
   }, [socket, inCall, projectName]);
 
-  const createPeerConnection = (peerSocketId, peerName, isInitiator) => {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('webrtc-signal', {
-          targetId: peerSocketId,
-          signal: { candidate: event.candidate }
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
-
-      setPeers(prev => {
-        const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        if (idx !== -1) {
-          const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: remoteStream };
-          return updated;
-        } else {
-          return [...prev, { socketId: peerSocketId, username: peerName, stream: remoteStream }];
-        }
-      });
-    };
-
-    pc.onnegotiationneeded = async () => {
-      if (isInitiator) {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: peerSocketId,
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Negotiation error:', err);
-        }
-      }
-    };
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
-
-    return pc;
-  };
-
   const toggleMic = () => {
     if (localStreamRef.current) {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setMicMuted(!audioTrack.enabled);
+        const nowMuted = !audioTrack.enabled;
+        setMicMuted(nowMuted);
+        // Broadcast mute state to peers
+        if (socket) {
+          socket.emit('mic-status', { projectName, muted: nowMuted });
+        }
       }
     }
   };
@@ -391,12 +426,19 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
       {!inCall ? (
         <button className="call-btn-trigger" onClick={startCall}>
-          <PhoneCall size={14} /> Join Voice & Video
+          <PhoneCall size={14} /> Join Voice &amp; Video
         </button>
       ) : (
         <div className="webrtc-call-workspace">
+          {/* Participant count */}
+          <div className="webrtc-participant-count">
+            <span className="webrtc-live-dot" />
+            {1 + peers.length} participant{(1 + peers.length) !== 1 ? 's' : ''}
+          </div>
+
           <div className="webrtc-video-grid">
-            <div className="video-card local-view">
+            {/* Local tile */}
+            <div className={`video-card local-view ${screenSharing ? 'sharing-screen' : ''}`}>
               <video 
                 ref={localVideoRef} 
                 autoPlay 
@@ -404,18 +446,31 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                 muted 
                 className={`video-element ${videoMuted ? 'muted' : ''}`}
               />
-              <div className="participant-badge">
-                {username} (You)
-              </div>
               {videoMuted && (
                 <div className="video-avatar-placeholder">
-                  👤
+                  <div
+                    className="video-initials-circle"
+                    style={{ background: getAvatarColor(username) }}
+                  >
+                    {getInitials(username)}
+                  </div>
                 </div>
               )}
+              <div className="participant-badge">
+                <span className={`webrtc-mic-icon ${micMuted ? 'muted' : ''}`}>
+                  {micMuted ? <MicOff size={9} /> : <Mic size={9} />}
+                </span>
+                {username || 'You'}
+              </div>
             </div>
 
+            {/* Remote peer tiles */}
             {peers.map(peer => (
-              <VideoCard key={peer.socketId} peer={peer} />
+              <VideoCard
+                key={peer.socketId}
+                peer={peer}
+                isMicMuted={!!micMutedMap[peer.socketId]}
+              />
             ))}
           </div>
 
@@ -423,7 +478,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             <button 
               onClick={toggleMic} 
               className={`call-tool-btn ${micMuted ? 'active' : ''}`}
-              title={micMuted ? "Unmute Mic" : "Mute Mic"}
+              title={micMuted ? 'Unmute Mic' : 'Mute Mic'}
             >
               {micMuted ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
@@ -431,7 +486,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             <button 
               onClick={toggleVideo} 
               className={`call-tool-btn ${videoMuted ? 'active' : ''}`}
-              title={videoMuted ? "Turn Video On" : "Turn Video Off"}
+              title={videoMuted ? 'Turn Video On' : 'Turn Video Off'}
             >
               {videoMuted ? <VideoOff size={16} /> : <Video size={16} />}
             </button>
@@ -439,7 +494,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             <button 
               onClick={toggleScreenShare} 
               className={`call-tool-btn ${screenSharing ? 'active' : ''}`}
-              title={screenSharing ? "Stop Sharing" : "Share Screen"}
+              title={screenSharing ? 'Stop Sharing' : 'Share Screen'}
             >
               <Tv size={16} />
             </button>
@@ -458,7 +513,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   );
 }
 
-function VideoCard({ peer }) {
+function VideoCard({ peer, isMicMuted }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -475,7 +530,20 @@ function VideoCard({ peer }) {
         playsInline 
         className="video-element"
       />
+      {!peer.stream && (
+        <div className="video-avatar-placeholder">
+          <div
+            className="video-initials-circle"
+            style={{ background: getAvatarColor(peer.username) }}
+          >
+            {getInitials(peer.username)}
+          </div>
+        </div>
+      )}
       <div className="participant-badge">
+        <span className={`webrtc-mic-icon ${isMicMuted ? 'muted' : ''}`}>
+          {isMicMuted ? <MicOff size={9} /> : <Mic size={9} />}
+        </span>
         {peer.username}
       </div>
     </div>

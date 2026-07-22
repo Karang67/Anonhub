@@ -17,7 +17,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff,
-  Users, MessageSquare, X, Send, ChevronRight
+  Users, MessageSquare, X, Send, ChevronRight, Home
 } from 'lucide-react';
 import { initSocket, getCookie, setCookie } from '../services/socket';
 import AccessKeyModal from '../components/AccessKeyModal';
@@ -28,7 +28,10 @@ const RTC_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ]
 };
 
@@ -116,6 +119,7 @@ export default function CallRoom() {
   const peersRef = useRef({});    // { socketId: RTCPeerConnection }
   const streamsRef = useRef({});   // { socketId: MediaStream }
   const screenStreamRef = useRef(null);
+  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
 
   // ── Attach local stream to video element once inCall is true ─────────────────
   useEffect(() => {
@@ -134,6 +138,7 @@ export default function CallRoom() {
 
   // ── Roster ───────────────────────────────────────────────────────────────────
   const [roster, setRoster] = useState([]); // [{ socketId, username }]
+  const [micMutedMap, setMicMutedMap] = useState({}); // { socketId: boolean }
 
   // ─── Auth on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -188,6 +193,70 @@ export default function CallRoom() {
     }
   };
 
+  // ─── Create peer connection ───────────────────────────────────────────────────
+  const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => {
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { candidate: event.candidate } });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams[0];
+      streamsRef.current[peerSocketId] = remoteStream;
+      setPeers(prev => {
+        const idx = prev.findIndex(p => p.socketId === peerSocketId);
+        const streamCopy = new MediaStream(remoteStream.getTracks());
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
+          return updated;
+        }
+        return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
+      });
+    };
+
+    pc.onnegotiationneeded = async () => {
+      if (isInitiator) {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { sdp: pc.localDescription } });
+        } catch (err) {
+          console.error('Negotiation error:', err);
+        }
+      }
+    };
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    return pc;
+  };
+
+  // ─── End Call Cleanup ────────────────────────────────────────────────────────
+  const endCallCleanup = useCallback(() => {
+    socketRef.current?.emit('webrtc-leave-call', { projectName: roomName });
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    localStreamRef.current = null;
+    screenStreamRef.current?.getTracks().forEach(t => t.stop());
+    screenStreamRef.current = null;
+    Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch {} });
+    peersRef.current = {};
+    streamsRef.current = {};
+    candidateQueues.current = {};
+    setPeers([]);
+    setInCall(false);
+    setScreenSharing(false);
+    setVideoMuted(false);
+    setMicMuted(false);
+  }, [roomName]);
+
   // ─── Socket setup after auth ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isAuthed) return;
@@ -223,6 +292,19 @@ export default function CallRoom() {
 
     socket.on('reconnect_failed', () => {
       setConnectionStatus('reconnection-failed');
+    });
+
+    // ── Session persistence: save assigned username to sessionStorage ──
+    socket.on('set username', (name) => {
+      setUsername(name);
+      sessionStorage.setItem('anonhub-username', name);
+      document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+    });
+
+    socket.on('username updated', (name) => {
+      setUsername(name);
+      sessionStorage.setItem('anonhub-username', name);
+      document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
     });
 
     // ── Roster events ──
@@ -302,13 +384,30 @@ export default function CallRoom() {
       try {
         if (signal.sdp) {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          // Flush candidate queue
+          const queue = candidateQueues.current[senderId] || [];
+          while (queue.length > 0) {
+            const cand = queue.shift();
+            await pc.addIceCandidate(cand).catch(() => {});
+          }
+          candidateQueues.current[senderId] = [];
+
           if (signal.sdp.type === 'offer') {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             socket.emit('webrtc-signal', { targetId: senderId, signal: { sdp: pc.localDescription } });
           }
         } else if (signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => {});
+          const candidate = new RTCIceCandidate(signal.candidate);
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            await pc.addIceCandidate(candidate).catch(() => {});
+          } else {
+            if (!candidateQueues.current[senderId]) {
+              candidateQueues.current[senderId] = [];
+            }
+            candidateQueues.current[senderId].push(candidate);
+          }
         }
       } catch (err) {
         console.error('Signal processing error:', err);
@@ -321,8 +420,14 @@ export default function CallRoom() {
         delete peersRef.current[sid];
       }
       delete streamsRef.current[sid];
+      delete candidateQueues.current[sid];
       setPeers(prev => prev.filter(p => p.socketId !== sid));
       setRoster(prev => prev.filter(r => r.socketId !== sid));
+    });
+
+    // ── Mic mute status from peers ──
+    socket.on('peer-mic-status', ({ socketId: sid, muted }) => {
+      setMicMutedMap(prev => ({ ...prev, [sid]: muted }));
     });
 
     socket.connect();
@@ -332,6 +437,8 @@ export default function CallRoom() {
       socket.off('disconnect');
       socket.off('reconnect');
       socket.off('reconnect_failed');
+      socket.off('set username');
+      socket.off('username updated');
       socket.off('user-joined');
       socket.off('user-left');
       socket.off('chat message');
@@ -339,6 +446,7 @@ export default function CallRoom() {
       socket.off('webrtc-user-joined');
       socket.off('webrtc-signal');
       socket.off('webrtc-user-left');
+      socket.off('peer-mic-status');
       endCallCleanup();
       socket.disconnect();
     };
@@ -355,51 +463,6 @@ export default function CallRoom() {
     if (sidebarOpen) setUnreadCount(0);
   }, [sidebarOpen]);
 
-  // ─── Create peer connection ───────────────────────────────────────────────────
-  const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { candidate: event.candidate } });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
-      setPeers(prev => {
-        const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        if (idx !== -1) {
-          const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: remoteStream };
-          return updated;
-        }
-        return [...prev, { socketId: peerSocketId, username: peerName, stream: remoteStream }];
-      });
-    };
-
-    pc.onnegotiationneeded = async () => {
-      if (isInitiator) {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', { targetId: peerSocketId, signal: { sdp: pc.localDescription } });
-        } catch (err) {
-          console.error('Negotiation error:', err);
-        }
-      }
-    };
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
-
-    return pc;
-  };
-
   // ─── Start Call ──────────────────────────────────────────────────────────────
   const startCall = async () => {
     try {
@@ -415,23 +478,6 @@ export default function CallRoom() {
     }
   };
 
-  // ─── End Call Cleanup ────────────────────────────────────────────────────────
-  const endCallCleanup = useCallback(() => {
-    socketRef.current?.emit('webrtc-leave-call', { projectName: roomName });
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    localStreamRef.current = null;
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
-    screenStreamRef.current = null;
-    Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch {} });
-    peersRef.current = {};
-    streamsRef.current = {};
-    setPeers([]);
-    setInCall(false);
-    setScreenSharing(false);
-    setVideoMuted(false);
-    setMicMuted(false);
-  }, [roomName]);
-
   const leaveCall = () => {
     endCallCleanup();
     navigate('/');
@@ -442,7 +488,10 @@ export default function CallRoom() {
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) {
       track.enabled = !track.enabled;
-      setMicMuted(!track.enabled);
+      const nowMuted = !track.enabled;
+      setMicMuted(nowMuted);
+      // Broadcast mute state to WebRTC room peers
+      socketRef.current?.emit('mic-status', { projectName: roomName, muted: nowMuted });
     }
   };
 
@@ -536,6 +585,16 @@ export default function CallRoom() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="callroom-header">
         <div className="callroom-header-left">
+          <button 
+            onClick={() => {
+              endCallCleanup();
+              navigate('/');
+            }}
+            className="callroom-home-btn"
+            title="Go to Homepage"
+          >
+            <Home size={16} />
+          </button>
           <div className="callroom-logo-dot" />
           <span className="callroom-title">AnonHub Call</span>
           <span className="callroom-room-name">#{roomName}</span>
@@ -608,7 +667,7 @@ export default function CallRoom() {
             data-count={Math.min(totalTiles, 4)}
           >
             {/* Local video tile */}
-            <div className="callroom-video-tile local-tile">
+            <div className={`callroom-video-tile local-tile ${screenSharing ? 'sharing-screen' : ''}`}>
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -645,7 +704,7 @@ export default function CallRoom() {
 
             {/* Remote video tiles */}
             {peers.map(peer => (
-              <RemoteVideoTile key={peer.socketId} peer={peer} micMutedMap={{}} />
+              <RemoteVideoTile key={peer.socketId} peer={peer} micMutedMap={micMutedMap} />
             ))}
           </div>
         )}
