@@ -1757,7 +1757,8 @@ io.on('connection', (socket) => {
             return;
         }
         socket.join(`${name}-webrtc`);
-        socket.to(`${name}-webrtc`).emit('webrtc-user-joined', { socketId: socket.id, username: activeUsers.get(socket.id)?.username });
+        const peerUsername = activeUsers.get(socket.id)?.username || 'Participant';
+        socket.to(`${name}-webrtc`).emit('webrtc-user-joined', { socketId: socket.id, username: peerUsername });
         if (typeof callback === 'function') callback({ success: true });
     });
 

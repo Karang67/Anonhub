@@ -62,18 +62,30 @@ function getInitials(name) {
 function RemoteVideoTile({ peer, micMutedMap }) {
   const videoRef = useRef(null);
 
+  // useCallback ref: fires immediately when DOM node mounts,
+  // so srcObject is set before autoPlay kicks in
+  const setVideoRef = useCallback((node) => {
+    videoRef.current = node;
+    if (node && peer.stream) {
+      node.srcObject = peer.stream;
+      node.play().catch(() => {});
+    }
+  }, [peer.stream]);
+
+  // Also re-attach when peer.stream changes (new track added)
   useEffect(() => {
     if (videoRef.current && peer.stream) {
       videoRef.current.srcObject = peer.stream;
+      videoRef.current.play().catch(() => {});
     }
   }, [peer.stream]);
 
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
-    <div className="callroom-video-tile remote-tile">
+    <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
       <video
-        ref={videoRef}
+        ref={setVideoRef}
         autoPlay
         playsInline
         style={{
@@ -87,12 +99,12 @@ function RemoteVideoTile({ peer, micMutedMap }) {
         }}
       />
       {!peer.stream && (
-        <div className="callroom-video-avatar">
+        <div className="callroom-video-avatar" style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#0d0f1a' }}>
           <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
           <div className="callroom-avatar-name">{peer.username}</div>
         </div>
       )}
-      <div className="callroom-participant-badge">
+      <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
         <span className={`callroom-mic-indicator ${isMuted ? 'muted' : ''}`}>
           {isMuted ? <MicOff size={10} /> : <Mic size={10} />}
         </span>
@@ -214,17 +226,23 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
+      // Re-use a single persistent MediaStream per peer — never snapshot-copy.
+      // ontrack fires once per track (audio then video), and each track must
+      // be added to the SAME object the <video> element is already playing.
+      if (!streamsRef.current[peerSocketId]) {
+        streamsRef.current[peerSocketId] = new MediaStream();
+      }
+      streamsRef.current[peerSocketId].addTrack(event.track);
+      const liveStream = streamsRef.current[peerSocketId];
+
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: liveStream };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
+        return [...prev, { socketId: peerSocketId, username: peerName, stream: liveStream }];
       });
     };
 
@@ -374,25 +392,19 @@ export default function CallRoom() {
     });
 
     // ── WebRTC signaling events ──
-    socket.on('webrtc-user-joined', async ({ socketId: sid, username: peerName }) => {
+    socket.on('webrtc-user-joined', ({ socketId: sid, username: peerName }) => {
+      // IMPORTANT: Do NOT call createOffer() here manually.
+      // createPeerConnection() calls addTrack() internally which fires
+      // onnegotiationneeded, and that handler sends the single correct offer.
+      // A second manual offer here causes SDP glare (both sides stuck in
+      // have-local-offer state) and the connection never establishes.
       if (!peersRef.current[sid]) {
-        const pc = createPeerConnection(sid, peerName, true, socket);
+        const pc = createPeerConnection(sid, peerName || 'Participant', true, socket);
         peersRef.current[sid] = pc;
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: sid,
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Failed to create SDP offer for joined user:', err);
-        }
       }
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
-        return [...prev, { socketId: sid, username: peerName }];
+        return [...prev, { socketId: sid, username: peerName || 'Participant' }];
       });
     });
 

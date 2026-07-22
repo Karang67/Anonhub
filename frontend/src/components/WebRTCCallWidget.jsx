@@ -177,18 +177,21 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
+      // Re-use a single persistent MediaStream per peer so srcObject stays live
+      if (!streamsRef.current[peerSocketId]) {
+        streamsRef.current[peerSocketId] = new MediaStream();
+      }
+      streamsRef.current[peerSocketId].addTrack(event.track);
+      const liveStream = streamsRef.current[peerSocketId];
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: liveStream };
           return updated;
         } else {
-          return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
+          return [...prev, { socketId: peerSocketId, username: peerName, stream: liveStream }];
         }
       });
     };
@@ -269,21 +272,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       reconnectTimeout = setTimeout(attemptReconnect, 1000);
     };
 
-    const handleUserJoined = async ({ socketId, username: peerName }) => {
+    const handleUserJoined = ({ socketId, username: peerName }) => {
+      // Only create a new PC if we don't already have one for this peer.
+      // Do NOT call createOffer() here — onnegotiationneeded inside
+      // createPeerConnection fires automatically after addTrack() and
+      // sends the offer. Creating a second offer here causes SDP glare.
       if (!peersRef.current[socketId]) {
         const pc = createPeerConnection(socketId, peerName, true);
         peersRef.current[socketId] = pc;
-
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: socketId,
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Failed to create SDP offer for joined user:', err);
-        }
       }
     };
 
@@ -566,25 +562,29 @@ function VideoCard({ peer, isMicMuted }) {
     videoRef.current = node;
     if (node && peer.stream) {
       node.srcObject = peer.stream;
+      node.play().catch(() => {});
     }
   }, [peer.stream]);
 
   useEffect(() => {
     if (videoRef.current && peer.stream) {
       videoRef.current.srcObject = peer.stream;
+      videoRef.current.play().catch(() => {});
     }
   }, [peer.stream]);
 
   return (
-    <div className="video-card remote-view">
+    <div className="video-card remote-view" style={{ position: 'relative' }}>
       <video
         ref={videoRefCallback}
         autoPlay
         playsInline
+        muted={false}
         className="video-element"
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
       />
       {!peer.stream && (
-        <div className="video-avatar-placeholder">
+        <div className="video-avatar-placeholder" style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#13152a' }}>
           <div
             className="video-initials-circle"
             style={{ background: getAvatarColor(peer.username) }}
@@ -593,7 +593,7 @@ function VideoCard({ peer, isMicMuted }) {
           </div>
         </div>
       )}
-      <div className="participant-badge">
+      <div className="participant-badge" style={{ position: 'absolute', bottom: 8, left: 8, zIndex: 3 }}>
         <span className={`webrtc-mic-icon ${isMicMuted ? 'muted' : ''}`}>
           {isMicMuted ? <MicOff size={9} /> : <Mic size={9} />}
         </span>
