@@ -91,7 +91,7 @@ function RemoteVideoTile({ peer, micMutedMap }) {
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
-    <div className="callroom-video-tile remote-tile">
+    <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
       <video
         ref={videoRefCallback}
         autoPlay
@@ -100,19 +100,19 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          display: hasVideo ? 'block' : 'none',
+          display: 'block',
           background: '#0d0f1a',
           position: 'absolute',
           inset: 0,
         }}
       />
       {!hasVideo && (
-        <div className="callroom-video-avatar">
+        <div className="callroom-video-avatar" style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
           <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
           <div className="callroom-avatar-name">{peer.username}</div>
         </div>
       )}
-      <div className="callroom-participant-badge">
+      <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
         <span className={`callroom-mic-indicator ${isMuted ? 'muted' : ''}`}>
           {isMuted ? <MicOff size={10} /> : <Mic size={10} />}
         </span>
@@ -238,17 +238,27 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
+      let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
+      if (!stream) {
+        if (!streamsRef.current[peerSocketId]) {
+          streamsRef.current[peerSocketId] = new MediaStream();
+        }
+        streamsRef.current[peerSocketId].addTrack(event.track);
+        stream = streamsRef.current[peerSocketId];
+      } else {
+        streamsRef.current[peerSocketId] = stream;
+      }
+
+      const activeStream = streamsRef.current[peerSocketId];
+
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: activeStream };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
+        return [...prev, { socketId: peerSocketId, username: peerName, stream: activeStream }];
       });
     };
 

@@ -178,18 +178,27 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0];
-      streamsRef.current[peerSocketId] = remoteStream;
+      let stream = (event.streams && event.streams[0]) ? event.streams[0] : null;
+      if (!stream) {
+        if (!streamsRef.current[peerSocketId]) {
+          streamsRef.current[peerSocketId] = new MediaStream();
+        }
+        streamsRef.current[peerSocketId].addTrack(event.track);
+        stream = streamsRef.current[peerSocketId];
+      } else {
+        streamsRef.current[peerSocketId] = stream;
+      }
+
+      const activeStream = streamsRef.current[peerSocketId];
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: activeStream };
           return updated;
         } else {
-          return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
+          return [...prev, { socketId: peerSocketId, username: peerName, stream: activeStream }];
         }
       });
     };
@@ -589,21 +598,21 @@ function VideoCard({ peer, isMicMuted }) {
     };
 
     checkVideo();
-    const interval = setInterval(checkVideo, 1000);
+    const interval = setInterval(checkVideo, 500);
     return () => clearInterval(interval);
   }, [peer.stream]);
 
   return (
-    <div className="video-card remote-view">
+    <div className="video-card remote-view" style={{ position: 'relative' }}>
       <video 
         ref={videoRefCallback} 
         autoPlay 
         playsInline 
-        className={`video-element ${!hasVideo ? 'hidden' : ''}`}
-        style={{ display: hasVideo ? 'block' : 'none' }}
+        className="video-element"
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
       />
       {!hasVideo && (
-        <div className="video-avatar-placeholder">
+        <div className="video-avatar-placeholder" style={{ position: 'absolute', inset: 0, zIndex: 2 }}>
           <div
             className="video-initials-circle"
             style={{ background: getAvatarColor(peer.username) }}
@@ -612,7 +621,7 @@ function VideoCard({ peer, isMicMuted }) {
           </div>
         </div>
       )}
-      <div className="participant-badge">
+      <div className="participant-badge" style={{ zIndex: 3 }}>
         <span className={`webrtc-mic-icon ${isMicMuted ? 'muted' : ''}`}>
           {isMicMuted ? <MicOff size={9} /> : <Mic size={9} />}
         </span>
