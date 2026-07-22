@@ -273,6 +273,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (!peersRef.current[socketId]) {
         const pc = createPeerConnection(socketId, peerName, true);
         peersRef.current[socketId] = pc;
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-signal', {
+            targetId: socketId,
+            signal: { sdp: pc.localDescription }
+          });
+        } catch (err) {
+          console.error('Failed to create SDP offer for joined user:', err);
+        }
       }
     };
 

@@ -378,6 +378,17 @@ export default function CallRoom() {
       if (!peersRef.current[sid]) {
         const pc = createPeerConnection(sid, peerName, true, socket);
         peersRef.current[sid] = pc;
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-signal', {
+            targetId: sid,
+            signal: { sdp: pc.localDescription }
+          });
+        } catch (err) {
+          console.error('Failed to create SDP offer for joined user:', err);
+        }
       }
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
