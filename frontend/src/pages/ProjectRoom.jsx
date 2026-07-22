@@ -647,9 +647,46 @@ export default function ProjectRoom() {
   const socketRef = useRef(null);
   const canvasRef = useRef(null); // DOM canvas node ref
   const fabricCanvasRef = useRef(null); // Fabric JS instance ref
+  const latestWhiteboardContentRef = useRef(null);
   const tinymceRef = useRef(null);
   const monacoRef = useRef(null);
   const chatContainerRef = useRef(null);
+
+  // Draggable floating chat button position hook
+  const [chatBtnPos, setChatBtnPos] = useState({ x: null, y: null });
+  const isDraggingChatRef = useRef(false);
+  const dragStartChatRef = useRef({ x: 0, y: 0, btnX: 0, btnY: 0 });
+
+  const handleChatTouchStart = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    isDraggingChatRef.current = false;
+    const currentX = chatBtnPos.x !== null ? chatBtnPos.x : (window.innerWidth - 70);
+    const currentY = chatBtnPos.y !== null ? chatBtnPos.y : (window.innerHeight - 100);
+    dragStartChatRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      btnX: currentX,
+      btnY: currentY
+    };
+  };
+
+  const handleChatTouchMove = (e) => {
+    const touch = e.touches ? e.touches[0] : e;
+    const dx = touch.clientX - dragStartChatRef.current.x;
+    const dy = touch.clientY - dragStartChatRef.current.y;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      isDraggingChatRef.current = true;
+    }
+    const newX = Math.max(10, Math.min(window.innerWidth - 65, dragStartChatRef.current.btnX + dx));
+    const newY = Math.max(10, Math.min(window.innerHeight - 65, dragStartChatRef.current.btnY + dy));
+    setChatBtnPos({ x: newX, y: newY });
+  };
+
+  const handleChatTouchEnd = () => {
+    if (!isDraggingChatRef.current) {
+      setMobileChatOpen(prev => !prev);
+    }
+  };
 
   // Whiteboard history stacks (Undo/Redo buffers)
   const undoStackRef = useRef([]); // Serialized history queue to traverse backwards
@@ -1105,6 +1142,7 @@ export default function ProjectRoom() {
     });
 
     socket.on('whiteboard content', (content) => {
+      latestWhiteboardContentRef.current = content;
       const canvas = fabricCanvasRef.current;
       if (!canvas || !content) return;
 
@@ -1285,6 +1323,25 @@ export default function ProjectRoom() {
     // Fabric v7 PencilBrush registration
     canvas.freeDrawingBrush = new PencilBrush(canvas);
     fabricCanvasRef.current = canvas;
+
+    // Load initial/saved whiteboard content if present
+    if (latestWhiteboardContentRef.current) {
+      try {
+        const parsed = JSON.parse(latestWhiteboardContentRef.current);
+        if (parsed && parsed.objects) {
+          isRemoteCanvasChangeRef.current = true;
+          canvas.loadFromJSON(parsed).then(() => {
+            const pane = document.getElementById('pane-sketch');
+            const parentEl = pane ? pane.parentElement : null;
+            const parentWidth = parentEl ? parentEl.clientWidth : (window.innerWidth - 32);
+            const w = pane ? Math.min(pane.clientWidth || parentWidth, parentWidth) : parentWidth;
+            canvas.setZoom(w / 800);
+            canvas.renderAll();
+            isRemoteCanvasChangeRef.current = false;
+          }).catch(() => { isRemoteCanvasChangeRef.current = false; });
+        }
+      } catch (e) {}
+    }
 
     // Apply active width & color properties to brush config
     if (canvas.freeDrawingBrush) {
@@ -1711,10 +1768,15 @@ export default function ProjectRoom() {
    * @param {string} url - Target stream endpoint URL
    */
   const onUploadSuccess = (name, url) => {
+    const newFile = { name, url, timestamp: Date.now() };
+    setAttachments(prev => {
+      if (prev.some(f => f.url === url)) return prev;
+      return [newFile, ...prev];
+    });
     if (socketRef.current) {
       socketRef.current.emit('add attachment', {
         projectName,
-        file: { name, url, timestamp: Date.now() }
+        file: newFile
       });
     }
   };
@@ -5055,13 +5117,24 @@ export default function ProjectRoom() {
         </div>
       )}
 
-      {/* Floating Chat Toggle Icon (Mobile Only) */}
+      {/* Floating Dynamic Draggable Chat Toggle Icon (Mobile Only) */}
       <button
         className="floating-chat-toggle"
-        onClick={() => setMobileChatOpen(true)}
-        title="Open Chat"
+        style={{
+          left: chatBtnPos.x !== null ? `${chatBtnPos.x}px` : undefined,
+          top: chatBtnPos.y !== null ? `${chatBtnPos.y}px` : undefined,
+          bottom: chatBtnPos.y === null ? '24px' : undefined,
+          right: chatBtnPos.x === null ? '24px' : undefined,
+        }}
+        onTouchStart={handleChatTouchStart}
+        onTouchMove={handleChatTouchMove}
+        onTouchEnd={handleChatTouchEnd}
+        onMouseDown={handleChatTouchStart}
+        onMouseMove={(e) => { if (e.buttons === 1) handleChatTouchMove(e); }}
+        onMouseUp={handleChatTouchEnd}
+        title="Toggle Chat"
       >
-        <MessageSquare size={20} />
+        <MessageSquare size={22} />
       </button>
 
     </div>
