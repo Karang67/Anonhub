@@ -55,10 +55,18 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const localVideoRef = useRef(null);
   const peersRef = useRef({}); // { socketId: RTCPeerConnection }
   const streamsRef = useRef({}); // { socketId: MediaStream }
+  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
   const screenStreamRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectionAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+
+  const localVideoRefCallback = useCallback((node) => {
+    localVideoRef.current = node;
+    if (node && localStreamRef.current) {
+      node.srcObject = localStreamRef.current;
+    }
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Enhanced Call Session Actions
@@ -80,13 +88,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         audio: true
       });
       localStreamRef.current = stream;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
       setInCall(true);
       setVideoMuted(false);
       setMicMuted(false);
       setConnectionStatus('connected');
+
+      requestAnimationFrame(() => {
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          localVideoRef.current.play().catch(() => {});
+        }
+      });
 
       // Join the signaling pool with enhanced error handling
       socket.emit('webrtc-join-call', { projectName }, (response) => {
@@ -161,12 +173,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
+        const streamCopy = new MediaStream(remoteStream.getTracks());
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { socketId: peerSocketId, username: peerName, stream: remoteStream };
+          updated[idx] = { socketId: peerSocketId, username: peerName, stream: streamCopy };
           return updated;
         } else {
-          return [...prev, { socketId: peerSocketId, username: peerName, stream: remoteStream }];
+          return [...prev, { socketId: peerSocketId, username: peerName, stream: streamCopy }];
         }
       });
     };
@@ -265,6 +278,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       try {
         if (signal.sdp) {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+          // Flush queued candidates
+          const queue = candidateQueues.current[senderId] || [];
+          while (queue.length > 0) {
+            const cand = queue.shift();
+            await pc.addIceCandidate(cand).catch(() => {});
+          }
+          candidateQueues.current[senderId] = [];
+
           if (signal.sdp.type === 'offer') {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -274,10 +296,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             });
           }
         } else if (signal.candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-          } catch (e) {
-            console.warn('Error adding ICE candidate:', e);
+          const candidate = new RTCIceCandidate(signal.candidate);
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            await pc.addIceCandidate(candidate).catch(() => {});
+          } else {
+            if (!candidateQueues.current[senderId]) {
+              candidateQueues.current[senderId] = [];
+            }
+            candidateQueues.current[senderId].push(candidate);
           }
         }
       } catch (err) {
@@ -440,7 +466,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
             {/* Local tile */}
             <div className={`video-card local-view ${screenSharing ? 'sharing-screen' : ''}`}>
               <video 
-                ref={localVideoRef} 
+                ref={localVideoRefCallback} 
                 autoPlay 
                 playsInline 
                 muted 
@@ -516,6 +542,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 function VideoCard({ peer, isMicMuted }) {
   const videoRef = useRef(null);
 
+  const videoRefCallback = useCallback((node) => {
+    videoRef.current = node;
+    if (node && peer.stream) {
+      node.srcObject = peer.stream;
+    }
+  }, [peer.stream]);
+
   useEffect(() => {
     if (videoRef.current && peer.stream) {
       videoRef.current.srcObject = peer.stream;
@@ -525,7 +558,7 @@ function VideoCard({ peer, isMicMuted }) {
   return (
     <div className="video-card remote-view">
       <video 
-        ref={videoRef} 
+        ref={videoRefCallback} 
         autoPlay 
         playsInline 
         className="video-element"
