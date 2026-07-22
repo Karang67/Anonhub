@@ -1448,3 +1448,112 @@ html[data-theme="dark"] .office-chat-window {
     bottom: 90px !important;
   }
 }
+
+/* ── Lightbox & Share Modal Overlay ── */
+.chat-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeInFast 0.18s ease;
+}
+
+@keyframes fadeInFast {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.share-modal {
+  background: var(--card-background, #1e293b);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 14px;
+  padding: 24px;
+  width: min(480px, 92vw);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: slideInModal 0.2s ease-out;
+}
+
+@keyframes slideInModal {
+  from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.share-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.share-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-color, #f8fafc);
+}
+
+.share-modal-header button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #94a3b8);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.share-modal-header button:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.share-modal-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.share-modal-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-modal-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 8px;
+  background: var(--light-color, rgba(255, 255, 255, 0.05));
+  color: var(--text-color, #f8fafc);
+  font-size: 0.82rem;
+  outline: none;
+  font-family: monospace;
+}
+
+.share-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-color, #3b82f6);
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.share-copy-btn:hover {
+  filter: brightness(1.15);
+}

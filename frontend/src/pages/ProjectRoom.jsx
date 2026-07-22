@@ -42,6 +42,7 @@ export default function ProjectRoom() {
   // Connection & Gating state hooks
   const [username, setUsername] = useState('');
   const [users, setUsers] = useState([]);
+  const [isOwner, setIsOwner] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [overlayError, setOverlayError] = useState('');
 
@@ -452,7 +453,6 @@ export default function ProjectRoom() {
   }, []);
 
   const [attachments, setAttachments] = useState([]);
-  const [isOwner, setIsOwner] = useState(false);
   const [deleteConfirmFile, setDeleteConfirmFile] = useState(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
