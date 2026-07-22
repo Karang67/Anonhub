@@ -3943,26 +3943,29 @@ html[data-theme="dark"] .snippets-filter-select {
 
   .project-chat-container {
     position: fixed !important;
-    inset: auto 0 0 0 !important;
-    width: 100vw !important;
-    height: 75vh !important;
-    max-height: 80vh !important;
-    border-radius: 20px 20px 0 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: auto !important;
+    width: min(85vw, 360px) !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 16px 0 0 16px !important;
     z-index: 100000 !important;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5) !important;
-    transform: translateY(100%);
+    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5) !important;
+    transform: translateX(100%) !important;
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
     background: var(--card-background, #1e293b) !important;
-    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)) !important;
+    border-left: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)) !important;
     display: flex !important;
     flex-direction: column !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    overflow-y: auto !important;
   }
 
   .project-chat-container.mobile-open {
     display: flex !important;
-    transform: translateY(0) !important;
+    transform: translateX(0) !important;
   }
 
   .mobile-chat-close-bar {
@@ -3991,4 +3994,34 @@ html[data-theme="dark"] .snippets-filter-select {
   .close-mobile-chat-btn:hover {
     color: #ef4444 !important;
   }
+}
+
+/* ── Whiteboard Canvas Wrapper & Scrollbars ── */
+.whiteboard-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: auto !important;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: #ffffff;
+}
+
+.whiteboard-canvas-wrapper::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.whiteboard-canvas-wrapper::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.whiteboard-canvas-wrapper::-webkit-scrollbar-thumb {
+  background: var(--primary-color, #a93f55);
+  border-radius: 4px;
+}
+
+.whiteboard-canvas-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-hover, #8b3245);
 }

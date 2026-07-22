@@ -1440,6 +1440,91 @@ export default function ProjectRoom() {
       }
     });
 
+    // ── Mobile Touch Pinch-to-Zoom & Touch Pan Event Listeners ──
+    let touchStartDist = 0;
+    let touchStartZoom = 1;
+    let touchStartPos = { x: 0, y: 0 };
+    let isTouchPanning = false;
+
+    const getTouchDist = (e) => {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+    };
+
+    const getTouchCenter = (e) => {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      return {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+    };
+
+    const upperCanvas = canvas.upperCanvasEl || canvasRef.current;
+
+    const handleTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        touchStartDist = getTouchDist(e);
+        touchStartZoom = canvas.getZoom();
+        isTouchPanning = false;
+        e.preventDefault();
+      } else if (e.touches.length === 1 && drawingTool === 'select') {
+        isTouchPanning = true;
+        touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 2) {
+        const currentDist = getTouchDist(e);
+        if (touchStartDist > 0) {
+          const scale = currentDist / touchStartDist;
+          let newZoom = touchStartZoom * scale;
+          if (newZoom > 10) newZoom = 10;
+          if (newZoom < 0.1) newZoom = 0.1;
+
+          const rect = upperCanvas ? upperCanvas.getBoundingClientRect() : { left: 0, top: 0 };
+          const center = getTouchCenter(e);
+          const zoomPoint = { x: center.x - rect.left, y: center.y - rect.top };
+
+          canvas.zoomToPoint(zoomPoint, newZoom);
+          canvas.renderAll();
+        }
+        e.preventDefault();
+      } else if (e.touches.length === 1 && isTouchPanning && drawingTool === 'select') {
+        const dx = e.touches[0].clientX - touchStartPos.x;
+        const dy = e.touches[0].clientY - touchStartPos.y;
+        touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+        const vpt = canvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += dx;
+          vpt[5] += dy;
+          canvas.requestRenderAll();
+        }
+        e.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (e.touches.length < 2) {
+        touchStartDist = 0;
+      }
+      if (e.touches.length === 0) {
+        isTouchPanning = false;
+        if (canvas.viewportTransform) {
+          canvas.setViewportTransform(canvas.viewportTransform);
+        }
+      }
+    };
+
+    if (upperCanvas) {
+      upperCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      upperCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      upperCanvas.addEventListener('touchend', handleTouchEnd);
+    }
+
     // Attach events to record state snapshots and dispatch changes
     canvas.on('path:created', () => {
       if (!isRemoteCanvasChangeRef.current && !isUndoingRedoingRef.current) saveCanvasState();
@@ -1459,6 +1544,11 @@ export default function ProjectRoom() {
     });
 
     return () => {
+      if (upperCanvas) {
+        upperCanvas.removeEventListener('touchstart', handleTouchStart);
+        upperCanvas.removeEventListener('touchmove', handleTouchMove);
+        upperCanvas.removeEventListener('touchend', handleTouchEnd);
+      }
       if (resizeObserver) resizeObserver.disconnect();
       window.removeEventListener('resize', resizeCanvas);
       if (emitTimeout) clearTimeout(emitTimeout);
@@ -3363,7 +3453,9 @@ export default function ProjectRoom() {
                   </button>
                 </div>
 
-                <canvas ref={canvasRef} />
+                <div className="whiteboard-canvas-wrapper">
+                  <canvas ref={canvasRef} />
+                </div>
               </div>
             </div>
 
