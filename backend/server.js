@@ -2115,8 +2115,8 @@ if (fs.existsSync(DIST_DIR)) {
 
     // SPA catch-all: any route not matched by API handlers above falls through
     // to index.html so React Router can handle client-side navigation.
-    // This prevents blank screens when refreshing /about, /chat/room, etc.
-    app.get('*', (req, res) => {
+    // app.use matches all remaining requests without path-to-regexp parsing errors.
+    app.use((req, res) => {
         res.sendFile(path.join(DIST_DIR, 'index.html'));
     });
 
@@ -2124,7 +2124,7 @@ if (fs.existsSync(DIST_DIR)) {
 } else {
     log('warn', `Frontend dist folder not found at ${DIST_DIR}. Run "npm run build" in the frontend directory.`);
     // In development, the Vite dev server handles the frontend separately
-    app.get('*', (req, res) => {
+    app.use((req, res) => {
         res.status(404).json({ error: 'Frontend not built. Run npm run build in the frontend directory.' });
     });
 }
