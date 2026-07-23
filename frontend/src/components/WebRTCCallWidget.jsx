@@ -178,19 +178,25 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     pc.ontrack = (event) => {
-      if (!streamsRef.current[peerSocketId]) {
-        streamsRef.current[peerSocketId] = new MediaStream();
+      // Each ontrack call creates a NEW MediaStream so the reference always changes.
+      // This forces React's useEffect([peer.stream]) in VideoCard to re-run
+      // for EVERY incoming track (audio AND video).
+      const prevStream = streamsRef.current[peerSocketId];
+      const newStream = new MediaStream();
+      if (prevStream) {
+        prevStream.getTracks().forEach(t => newStream.addTrack(t));
       }
-      streamsRef.current[peerSocketId].addTrack(event.track);
+      newStream.addTrack(event.track);
+      streamsRef.current[peerSocketId] = newStream;
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: streamsRef.current[peerSocketId] };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: newStream };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: streamsRef.current[peerSocketId] }];
+        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: newStream }];
       });
     };
 
@@ -567,46 +573,31 @@ function VideoCard({ peer, isMicMuted }) {
     const stream = peer.stream;
     const videoEl = videoRef.current;
 
-    const checkVideoTrack = () => {
-      if (stream) {
-        const vTracks = stream.getVideoTracks();
-        const active = vTracks.some(t => t.enabled && t.readyState === 'live');
-        setHasVideo(active);
-      } else {
-        setHasVideo(false);
-      }
-    };
-
-    const attachStream = () => {
-      if (videoEl && stream) {
-        if (videoEl.srcObject !== stream) {
-          videoEl.srcObject = stream;
-        }
-        videoEl.play().catch(() => {});
-      }
-      checkVideoTrack();
-    };
-
-    attachStream();
-
-    if (stream) {
-      stream.addEventListener('addtrack', attachStream);
-      stream.addEventListener('removetrack', attachStream);
+    if (!stream || !videoEl) {
+      setHasVideo(false);
+      return;
     }
+
+    // Always assign srcObject — a new MediaStream is created on every ontrack call
+    videoEl.srcObject = stream;
+    videoEl.play().catch(() => {});
+
+    const vTracks = stream.getVideoTracks();
+    const active = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
+    setHasVideo(active);
+
+    const onAddTrack = () => {
+      const vt = stream.getVideoTracks();
+      setHasVideo(vt.length > 0 && vt.some(t => t.readyState !== 'ended'));
+    };
+    stream.addEventListener('addtrack', onAddTrack);
+    stream.addEventListener('removetrack', onAddTrack);
 
     return () => {
-      if (stream) {
-        stream.removeEventListener('addtrack', attachStream);
-        stream.removeEventListener('removetrack', attachStream);
-      }
+      stream.removeEventListener('addtrack', onAddTrack);
+      stream.removeEventListener('removetrack', onAddTrack);
     };
-  }, [peer.stream]);
-
-  useEffect(() => {
-    if (hasVideo && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-    }
-  }, [hasVideo]);
+  }, [peer.stream]); // new stream ref on every ontrack — always re-runs
 
   return (
     <div className="video-card remote-view" style={{ position: 'relative' }}>

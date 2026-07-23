@@ -67,46 +67,37 @@ function RemoteVideoTile({ peer, micMutedMap }) {
     const stream = peer.stream;
     const videoEl = videoRef.current;
 
-    const checkVideoTrack = () => {
-      if (stream) {
-        const vTracks = stream.getVideoTracks();
-        const active = vTracks.some(t => t.enabled && t.readyState === 'live');
-        setHasVideo(active);
-      } else {
-        setHasVideo(false);
-      }
-    };
-
-    const attachStream = () => {
-      if (videoEl && stream) {
-        if (videoEl.srcObject !== stream) {
-          videoEl.srcObject = stream;
-        }
-        videoEl.play().catch(() => {});
-      }
-      checkVideoTrack();
-    };
-
-    attachStream();
-
-    if (stream) {
-      stream.addEventListener('addtrack', attachStream);
-      stream.addEventListener('removetrack', attachStream);
+    if (!stream || !videoEl) {
+      setHasVideo(false);
+      return;
     }
+
+    // Always assign srcObject so the video element always reflects the latest stream.
+    // A new MediaStream is created on every ontrack call, so this runs each time
+    // a new track (audio or video) arrives from the remote peer.
+    videoEl.srcObject = stream;
+    videoEl.play().catch(() => {});
+
+    // Check if there are live video tracks in the stream.
+    // Use 'readyState !== ended' instead of '=== live' to catch tracks
+    // that haven't fully transitioned to 'live' yet.
+    const vTracks = stream.getVideoTracks();
+    const active = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
+    setHasVideo(active);
+
+    // Also listen for any future track additions (belt-and-suspenders)
+    const onAddTrack = () => {
+      const vt = stream.getVideoTracks();
+      setHasVideo(vt.length > 0 && vt.some(t => t.readyState !== 'ended'));
+    };
+    stream.addEventListener('addtrack', onAddTrack);
+    stream.addEventListener('removetrack', onAddTrack);
 
     return () => {
-      if (stream) {
-        stream.removeEventListener('addtrack', attachStream);
-        stream.removeEventListener('removetrack', attachStream);
-      }
+      stream.removeEventListener('addtrack', onAddTrack);
+      stream.removeEventListener('removetrack', onAddTrack);
     };
-  }, [peer.stream]);
-
-  useEffect(() => {
-    if (hasVideo && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-    }
-  }, [hasVideo]);
+  }, [peer.stream]); // peer.stream is a NEW object on every ontrack call — always re-runs
 
   const isMuted = micMutedMap?.[peer.socketId];
 
@@ -253,19 +244,26 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      if (!streamsRef.current[peerSocketId]) {
-        streamsRef.current[peerSocketId] = new MediaStream();
+      // Each ontrack call creates a NEW MediaStream so the reference always changes.
+      // This forces React's useEffect([peer.stream]) in RemoteVideoTile to re-run
+      // for EVERY incoming track (audio AND video), ensuring the video element
+      // always gets the latest stream with all tracks attached.
+      const prevStream = streamsRef.current[peerSocketId];
+      const newStream = new MediaStream();
+      if (prevStream) {
+        prevStream.getTracks().forEach(t => newStream.addTrack(t)); // copy existing tracks
       }
-      streamsRef.current[peerSocketId].addTrack(event.track);
+      newStream.addTrack(event.track); // add the new track
+      streamsRef.current[peerSocketId] = newStream;
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: streamsRef.current[peerSocketId] };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: newStream };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: streamsRef.current[peerSocketId] }];
+        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: newStream }];
       });
     };
 
