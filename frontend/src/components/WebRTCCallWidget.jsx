@@ -202,27 +202,26 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       });
     };
 
-    pc.onnegotiationneeded = async () => {
-      if (isInitiator) {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetId: peerSocketId,
-            signal: { sdp: pc.localDescription }
-          });
-        } catch (err) {
-          console.error('Negotiation error:', err);
-        }
-      }
-    };
-
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         if (track.readyState === 'live') {
           pc.addTrack(track, localStreamRef.current);
         }
       });
+    }
+
+    if (isInitiator) {
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => {
+          if (socket) {
+            socket.emit('webrtc-signal', {
+              targetId: peerSocketId,
+              signal: { sdp: pc.localDescription }
+            });
+          }
+        })
+        .catch(err => console.error('Error creating offer:', err));
     }
 
     return pc;
