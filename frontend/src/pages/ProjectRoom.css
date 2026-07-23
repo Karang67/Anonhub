@@ -1213,11 +1213,20 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
     box-sizing: border-box;
   }
 
+  .attachments-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
   .attachment-card {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
     padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .attachment-buttons {
