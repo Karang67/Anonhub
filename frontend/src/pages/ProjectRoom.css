@@ -1222,12 +1222,14 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
 
   .attachment-buttons {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     align-items: center;
     width: 100%;
     border-top: 1px solid var(--border-color);
-    padding-top: 8px;
-    gap: 12px;
+    padding-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    box-sizing: border-box;
   }
 
   .attachment-btn-text {
@@ -1237,8 +1239,10 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
   }
 
   .attachment-action-btn {
+    flex: 1;
+    justify-content: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 8px 12px;
     background: rgba(0, 0, 0, 0.05);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
