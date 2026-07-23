@@ -1908,7 +1908,7 @@ export default function ProjectRoom() {
    * @param {string} url - Target stream endpoint URL
    */
   const onUploadSuccess = (name, url) => {
-    const newFile = { name, url, timestamp: Date.now() };
+    const newFile = { name, url, timestamp: Date.now(), uploader: username };
     setAttachments(prev => {
       if (prev.some(f => f.url === url)) return prev;
       return [newFile, ...prev];
@@ -3689,7 +3689,7 @@ export default function ProjectRoom() {
                               <Download size={14} />
                               <span className="attachment-btn-text">Download</span>
                             </a>
-                            {isOwner && (
+                            {(isOwner || file.uploader === username) && (
                               <button
                                 onClick={() => setDeleteConfirmFile(file)}
                                 className="attachment-action-btn delete-btn"

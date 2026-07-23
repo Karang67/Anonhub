@@ -2070,15 +2070,19 @@ io.on('connection', (socket) => {
             socket.emit('error', 'You must be joined in this project to delete attachments.');
             return;
         }
-        if (!socket.isOwner) {
-            socket.emit('error', 'Only the project creator can delete attachments.');
-            return;
-        }
-
         try {
             const project = await Project.findOne({ name });
             if (project) {
                 const list = JSON.parse(project.attachments || '[]');
+                const fileToDelete = list.find(f => f.url === fileUrl);
+
+                if (!fileToDelete) return;
+                
+                if (!socket.isOwner && fileToDelete.uploader !== userData.username) {
+                    socket.emit('error', 'Only the project creator or the uploader can delete attachments.');
+                    return;
+                }
+
                 const filteredList = list.filter(f => f.url !== fileUrl);
                 const updated = JSON.stringify(filteredList);
                 await Project.updateOne({ name }, { attachments: updated });
