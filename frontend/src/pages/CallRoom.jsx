@@ -410,7 +410,9 @@ export default function CallRoom() {
     // ── WebRTC signaling events ──
     socket.on('webrtc-user-joined', ({ socketId: sid, username: peerName }) => {
       if (!peersRef.current[sid]) {
-        const pc = createPeerConnection(sid, peerName || 'Participant', true, socket);
+        // isInitiator=false: the JOINING user (via existingPeers callback) sends the offer.
+        // The existing user waits to receive it, avoiding SDP glare.
+        const pc = createPeerConnection(sid, peerName || 'Participant', false, socket);
         peersRef.current[sid] = pc;
       }
       setRoster(prev => {

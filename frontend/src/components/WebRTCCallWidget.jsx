@@ -273,12 +273,11 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     };
 
     const handleUserJoined = ({ socketId, username: peerName }) => {
-      // Only create a new PC if we don't already have one for this peer.
-      // Do NOT call createOffer() here — onnegotiationneeded inside
-      // createPeerConnection fires automatically after addTrack() and
-      // sends the offer. Creating a second offer here causes SDP glare.
+      // isInitiator=false: the JOINING user (via existingPeers callback) sends the offer.
+      // The existing user just prepares a connection and waits to receive the offer,
+      // avoiding SDP glare (two simultaneous conflicting offers).
       if (!peersRef.current[socketId]) {
-        const pc = createPeerConnection(socketId, peerName, true);
+        const pc = createPeerConnection(socketId, peerName, false);
         peersRef.current[socketId] = pc;
       }
     };
