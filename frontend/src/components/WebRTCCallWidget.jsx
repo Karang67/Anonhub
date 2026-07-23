@@ -42,6 +42,7 @@ function getAvatarColor(name) {
 
 export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [inCall, setInCall] = useState(false);
+  const inCallRef = useRef(false); // Ref to avoid stale closures in socket handlers
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
@@ -87,6 +88,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         audio: true
       });
       localStreamRef.current = stream;
+      inCallRef.current = true;
       setInCall(true);
       setVideoMuted(false);
       setMicMuted(false);
@@ -109,7 +111,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         } else if (response && Array.isArray(response.existingPeers)) {
           response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
             if (!peersRef.current[sid]) {
-              const pc = createPeerConnection(sid, peerName || 'Participant', false);
+              // isInitiator=true: the joining user must send the SDP offer
+              const pc = createPeerConnection(sid, peerName || 'Participant', true);
               peersRef.current[sid] = pc;
             }
           });
@@ -148,6 +151,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     peersRef.current = {};
     streamsRef.current = {};
 
+    inCallRef.current = false;
     setPeers([]);
     setInCall(false);
     setScreenSharing(false);
@@ -231,7 +235,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setIsReconnecting(false);
       setConnectionStatus('connected');
 
-      if (inCall) {
+      // Use ref to avoid stale closure — inCall state may be stale here
+      if (inCallRef.current) {
         socket.emit('webrtc-join-call', { projectName }, (response) => {
           console.log('Rejoin call response:', response);
           if (response && response.error) {
@@ -362,11 +367,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
-      if (inCall) {
+      // Use ref to avoid stale closure
+      if (inCallRef.current) {
         endCall();
       }
     };
-  }, [socket, inCall, projectName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, projectName]); // Removed inCall — use inCallRef to avoid stale closure teardowns
 
   const toggleMic = () => {
     if (localStreamRef.current) {

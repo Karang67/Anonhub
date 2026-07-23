@@ -1791,6 +1791,17 @@ io.on('connection', (socket) => {
         });
     });
 
+    // ─── Event: mic-status (relay mute state to WebRTC room peers) ───────────
+    socket.on('mic-status', ({ projectName, muted }) => {
+        const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name) return;
+        // Relay to everyone else in the WebRTC signaling room
+        socket.to(`${name}-webrtc`).emit('peer-mic-status', {
+            socketId: socket.id,
+            muted: !!muted
+        });
+    });
+
     // ─── Event: update polls ─────────────────────────────────────────────────
     socket.on('update polls', async ({ projectName, polls }) => {
         if (!checkSocketRateLimit(socket.id, 'update polls', 30, 5_000)) return;
