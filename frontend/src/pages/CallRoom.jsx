@@ -252,16 +252,15 @@ export default function CallRoom() {
         streamsRef.current[peerSocketId] = new MediaStream();
       }
       streamsRef.current[peerSocketId].addTrack(event.track);
-      const liveStream = new MediaStream(streamsRef.current[peerSocketId].getTracks());
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: liveStream };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: streamsRef.current[peerSocketId] };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: liveStream }];
+        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: streamsRef.current[peerSocketId] }];
       });
     };
 
