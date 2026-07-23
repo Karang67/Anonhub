@@ -527,7 +527,7 @@ export default function CallRoom() {
         if (response && Array.isArray(response.existingPeers)) {
           response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
             if (socketRef.current && !peersRef.current[sid]) {
-              const pc = createPeerConnection(sid, peerName || 'Participant', true, socketRef.current);
+              const pc = createPeerConnection(sid, peerName || 'Participant', false, socketRef.current);
               peersRef.current[sid] = pc;
             }
           });

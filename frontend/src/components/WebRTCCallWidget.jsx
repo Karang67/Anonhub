@@ -119,7 +119,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         } else if (response && Array.isArray(response.existingPeers)) {
           response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
             if (!peersRef.current[sid]) {
-              const pc = createPeerConnection(sid, peerName || 'Participant', true);
+              const pc = createPeerConnection(sid, peerName || 'Participant', false);
               peersRef.current[sid] = pc;
             }
           });
