@@ -102,6 +102,12 @@ function RemoteVideoTile({ peer, micMutedMap }) {
     };
   }, [peer.stream]);
 
+  useEffect(() => {
+    if (hasVideo && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [hasVideo]);
+
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
@@ -114,7 +120,6 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          display: hasVideo ? 'block' : 'none',
           background: '#0d0f1a',
           position: 'absolute',
           inset: 0,

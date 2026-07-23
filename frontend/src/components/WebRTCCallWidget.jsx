@@ -15,18 +15,8 @@ const RTC_CONFIG = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelay',
-      credential: 'openrelay'
-    }
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ]
 };
 
@@ -606,6 +596,12 @@ function VideoCard({ peer, isMicMuted }) {
     };
   }, [peer.stream]);
 
+  useEffect(() => {
+    if (hasVideo && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [hasVideo]);
+
   return (
     <div className="video-card remote-view" style={{ position: 'relative' }}>
       <video
@@ -617,8 +613,7 @@ function VideoCard({ peer, isMicMuted }) {
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
-          display: hasVideo ? 'block' : 'none'
+          objectFit: 'cover'
         }}
       />
       {!hasVideo && (
