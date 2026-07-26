@@ -589,26 +589,45 @@ function VideoCard({ peer, isMicMuted }) {
       return;
     }
 
-    // Always assign srcObject — a new MediaStream is created on every ontrack call
     videoEl.srcObject = stream;
+
+    // Use video element events — readyState is unreliable for remote WebRTC tracks
+    const onPlaying = () => setHasVideo(true);
+    const onLoadedMetadata = () => { videoEl.play().catch(() => {}); };
+    const onVideoError = () => setHasVideo(false);
+
+    videoEl.addEventListener('playing', onPlaying);
+    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+    videoEl.addEventListener('error', onVideoError);
+
     videoEl.play().catch(() => {});
 
+    // 2s fallback: force show video if track exists but 'playing' hasn't fired
     const vTracks = stream.getVideoTracks();
-    const active = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
-    setHasVideo(active);
+    const hasVideoTrack = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
+    let fallbackTimer = null;
+    if (hasVideoTrack) {
+      fallbackTimer = setTimeout(() => setHasVideo(true), 2000);
+    }
 
     const onAddTrack = () => {
       const vt = stream.getVideoTracks();
-      setHasVideo(vt.length > 0 && vt.some(t => t.readyState !== 'ended'));
+      if (vt.length > 0 && vt.some(t => t.readyState !== 'ended')) {
+        videoEl.play().catch(() => {});
+      }
     };
     stream.addEventListener('addtrack', onAddTrack);
     stream.addEventListener('removetrack', onAddTrack);
 
     return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      videoEl.removeEventListener('playing', onPlaying);
+      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      videoEl.removeEventListener('error', onVideoError);
       stream.removeEventListener('addtrack', onAddTrack);
       stream.removeEventListener('removetrack', onAddTrack);
     };
-  }, [peer.stream]); // new stream ref on every ontrack — always re-runs
+  }, [peer.stream]);
 
   return (
     <div className="video-card remote-view" style={{ position: 'relative' }}>
@@ -621,7 +640,8 @@ function VideoCard({ peer, isMicMuted }) {
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover'
+          objectFit: 'cover',
+          zIndex: 1,
         }}
       />
       {!hasVideo && (

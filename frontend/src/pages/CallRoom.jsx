@@ -72,32 +72,54 @@ function RemoteVideoTile({ peer, micMutedMap }) {
       return;
     }
 
-    // Always assign srcObject so the video element always reflects the latest stream.
-    // A new MediaStream is created on every ontrack call, so this runs each time
-    // a new track (audio or video) arrives from the remote peer.
+    // Assign srcObject — a new MediaStream is created on every ontrack call
     videoEl.srcObject = stream;
+
+    // Use video element events as the source of truth for whether frames are flowing.
+    // readyState on the track is unreliable — remote tracks can be 'live' before
+    // actual video frames start arriving.
+    const onPlaying = () => setHasVideo(true);
+    const onLoadedMetadata = () => {
+      // Metadata loaded means video dimensions are known — try to play
+      videoEl.play().catch(() => {});
+    };
+    const onVideoError = () => setHasVideo(false);
+
+    videoEl.addEventListener('playing', onPlaying);
+    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+    videoEl.addEventListener('error', onVideoError);
+
+    // Attempt to play immediately
     videoEl.play().catch(() => {});
 
-    // Check if there are live video tracks in the stream.
-    // Use 'readyState !== ended' instead of '=== live' to catch tracks
-    // that haven't fully transitioned to 'live' yet.
+    // Fallback: if a video track exists but 'playing' hasn't fired within 2s,
+    // force hasVideo=true so we don't permanently block the video with the avatar.
     const vTracks = stream.getVideoTracks();
-    const active = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
-    setHasVideo(active);
+    const hasVideoTrack = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
+    let fallbackTimer = null;
+    if (hasVideoTrack) {
+      fallbackTimer = setTimeout(() => setHasVideo(true), 2000);
+    }
 
-    // Also listen for any future track additions (belt-and-suspenders)
+    // Track add/remove listeners
     const onAddTrack = () => {
       const vt = stream.getVideoTracks();
-      setHasVideo(vt.length > 0 && vt.some(t => t.readyState !== 'ended'));
+      if (vt.length > 0 && vt.some(t => t.readyState !== 'ended')) {
+        videoEl.play().catch(() => {});
+      }
     };
     stream.addEventListener('addtrack', onAddTrack);
     stream.addEventListener('removetrack', onAddTrack);
 
     return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      videoEl.removeEventListener('playing', onPlaying);
+      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      videoEl.removeEventListener('error', onVideoError);
       stream.removeEventListener('addtrack', onAddTrack);
       stream.removeEventListener('removetrack', onAddTrack);
     };
-  }, [peer.stream]); // peer.stream is a NEW object on every ontrack call — always re-runs
+  }, [peer.stream]);
 
   const isMuted = micMutedMap?.[peer.socketId];
 
@@ -114,6 +136,7 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           background: '#0d0f1a',
           position: 'absolute',
           inset: 0,
+          zIndex: 1,
         }}
       />
       {!hasVideo && (
