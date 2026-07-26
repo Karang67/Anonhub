@@ -1749,6 +1749,55 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ─── Event: join-call-room (lightweight room join for video call pages) ──
+    // Unlike 'join room', this does NOT require a ChatRoom document in MongoDB.
+    // It simply joins the socket to the Socket.IO presence room, broadcasts user
+    // entry, and seeds chat history — allowing CallRoom.jsx to show user rosters
+    // and receive messages without needing a pre-existing ChatRoom record.
+    socket.on('join-call-room', async ({ room, accessKey }, callback) => {
+        const name = String(room || '').trim().slice(0, MAX_NAME_LEN);
+        const key = String(accessKey || '').trim().slice(0, MAX_KEY_LEN);
+        if (!name) {
+            if (typeof callback === 'function') callback({ error: 'Invalid room name' });
+            return;
+        }
+
+        if (!checkSocketRateLimit(socket.id, 'join-call-room', 5, 30_000)) {
+            if (typeof callback === 'function') callback({ error: 'Too many join attempts' });
+            return;
+        }
+
+        // Try to validate against a Project or ChatRoom if one exists.
+        // If neither exists, allow entry so a fresh call room can be created without pre-setup.
+        try {
+            const existingProject = await Project.findOne({ name }).exec();
+            const existingChat = await ChatRoom.findOne({ name }).exec();
+
+            if (existingProject) {
+                const match = await verifyAccessKey(key, existingProject.accessKey,
+                    (newHash) => Project.updateOne({ name }, { accessKey: newHash }));
+                if (!match) {
+                    if (typeof callback === 'function') callback({ error: 'Incorrect access key' });
+                    return;
+                }
+            } else if (existingChat) {
+                const match = await verifyAccessKey(key, existingChat.accessKey,
+                    (newHash) => ChatRoom.updateOne({ name }, { accessKey: newHash }));
+                if (!match) {
+                    if (typeof callback === 'function') callback({ error: 'Incorrect access key' });
+                    return;
+                }
+            }
+            // If no record found — allow entry (fresh call room)
+
+            await joinRoom(name);
+            if (typeof callback === 'function') callback({ success: true });
+        } catch (err) {
+            log('error', 'Socket join-call-room error:', err);
+            if (typeof callback === 'function') callback({ error: 'Server error' });
+        }
+    });
+
     // ─── WebRTC Signaling events ─────────────────────────────────────────────
     socket.on('webrtc-join-call', ({ projectName }, callback) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);

@@ -81,6 +81,7 @@ export default function ProjectRoom() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandPaletteQuery, setCommandPaletteQuery] = useState('');
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [aiMessageInput, setAiMessageInput] = useState('');
   const [aiLogs, setAiLogs] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -3753,35 +3754,35 @@ export default function ProjectRoom() {
                   <div className="activity-bar-items">
                     <button
                       className={`activity-btn ${sidebarActiveView === 'explorer' ? 'active' : ''}`}
-                      onClick={() => setSidebarActiveView('explorer')}
+                      onClick={() => { setSidebarActiveView('explorer'); setMobileSidebarOpen(v => sidebarActiveView === 'explorer' ? !v : true); }}
                       title="File Explorer"
                     >
                       📁
                     </button>
                     <button
                       className={`activity-btn ${sidebarActiveView === 'search' ? 'active' : ''}`}
-                      onClick={() => setSidebarActiveView('search')}
+                      onClick={() => { setSidebarActiveView('search'); setMobileSidebarOpen(v => sidebarActiveView === 'search' ? !v : true); }}
                       title="Search Project"
                     >
                       🔍
                     </button>
                     <button
                       className={`activity-btn ${sidebarActiveView === 'users' ? 'active' : ''}`}
-                      onClick={() => setSidebarActiveView('users')}
+                      onClick={() => { setSidebarActiveView('users'); setMobileSidebarOpen(v => sidebarActiveView === 'users' ? !v : true); }}
                       title="Collaboration & Presence"
                     >
                       👥
                     </button>
                     <button
                       className={`activity-btn ${sidebarActiveView === 'settings' ? 'active' : ''}`}
-                      onClick={() => setSidebarActiveView('settings')}
+                      onClick={() => { setSidebarActiveView('settings'); setMobileSidebarOpen(v => sidebarActiveView === 'settings' ? !v : true); }}
                       title="Editor Settings"
                     >
                       ⚙️
                     </button>
                     <button
                       className={`activity-btn ${sidebarActiveView === 'timeline' ? 'active' : ''}`}
-                      onClick={() => setSidebarActiveView('timeline')}
+                      onClick={() => { setSidebarActiveView('timeline'); setMobileSidebarOpen(v => sidebarActiveView === 'timeline' ? !v : true); }}
                       title="Room Activity Log"
                     >
                       🕒
@@ -3799,7 +3800,7 @@ export default function ProjectRoom() {
                 </div>
 
                 {/* 2. Sidebar Panel (Explorer, Search, presence stats, etc.) */}
-                <div className="ide-sidebar-panel">
+                <div className={`ide-sidebar-panel${mobileSidebarOpen ? ' mobile-visible' : ''}`}>
                   {sidebarActiveView === 'explorer' && (
                     <div className="sidebar-view explorer-view">
                       <div className="sidebar-section-header">
@@ -4312,7 +4313,7 @@ export default function ProjectRoom() {
 
                 {/* 4. AI Coding Assistant Sidebar */}
                 {aiPanelOpen && (
-                  <div className="ide-ai-panel">
+                  <div className={`ide-ai-panel${aiPanelOpen ? ' mobile-visible' : ''}`}>
                     <div className="ai-panel-header">
                       <span>🤖 AI Assistant</span>
                       <button onClick={() => setAiPanelOpen(false)}>×</button>

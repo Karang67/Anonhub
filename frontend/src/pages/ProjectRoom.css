@@ -4038,3 +4038,252 @@ html[data-theme="dark"] .snippets-filter-select {
 .whiteboard-canvas-wrapper::-webkit-scrollbar-thumb:hover {
   background: var(--primary-hover, #8b3245);
 }
+
+/* =========================================================
+   CODING BOARD (UPGRADED IDE) — MOBILE RESPONSIVENESS
+   ========================================================= */
+
+/* ── Tablet & small desktop (≤1024px) ── */
+@media (max-width: 1024px) {
+  .upgraded-ide-pane {
+    height: calc(100vh - 140px);
+    min-height: 500px;
+  }
+
+  /* AI panel: hide by default on tablets, show only when toggled */
+  .ide-ai-panel {
+    display: none;
+  }
+
+  .ide-ai-panel.mobile-visible {
+    display: flex;
+  }
+}
+
+/* ── Mobile (≤768px) ── */
+@media (max-width: 768px) {
+  /* 1. IDE container: full height, no fixed min */
+  .upgraded-ide-pane {
+    height: calc(100svh - 120px);
+    min-height: 0;
+    border-radius: 8px;
+  }
+
+  /* 2. Collapse the file-explorer sidebar & AI panel by default */
+  .ide-sidebar-panel {
+    display: none !important;
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .ide-sidebar-panel.mobile-visible {
+    display: flex !important;
+    position: absolute;
+    left: 52px;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    width: 220px !important;
+    z-index: 200;
+    background: #15151e !important;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .ide-ai-panel {
+    display: none;
+    width: 0;
+    overflow: hidden;
+  }
+
+  .ide-ai-panel.mobile-visible {
+    display: flex;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    width: min(85vw, 300px);
+    z-index: 200;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+
+  /* 3. IDE main container: fill full space */
+  .ide-main-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* 4. Activity bar: slightly smaller icons */
+  .ide-activity-bar {
+    width: 44px;
+    padding: 12px 0;
+  }
+
+  .activity-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 1.1rem;
+  }
+
+  /* 5. Tabs bar: scrollable, hide overflow text */
+  .ide-tabs-bar {
+    height: 36px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ide-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .editor-tab-item {
+    padding: 0 10px;
+    font-size: 0.75rem;
+    min-width: 0;
+    max-width: 140px;
+  }
+
+  /* 6. Tabs action buttons: compact */
+  .tabs-action-buttons {
+    gap: 4px !important;
+    padding-right: 8px !important;
+  }
+
+  .tabs-act-btn {
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+  }
+
+  .tabs-btn-text {
+    display: none !important;
+  }
+
+  /* 7. Bottom terminal: shorter on mobile */
+  .ide-bottom-terminal {
+    height: 180px;
+  }
+
+  /* 8. Terminal grid: stack input & output vertically */
+  .terminal-panel-body-grid {
+    flex-direction: column;
+  }
+
+  .terminal-input-column {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--ide-border);
+    max-height: 80px;
+  }
+
+  .terminal-output-column {
+    flex: 1;
+  }
+
+  /* 9. Command palette: narrower */
+  .command-palette-modal {
+    width: calc(100vw - 32px);
+  }
+
+  /* 10. Presence avatars: hide overflow on tiny screens */
+  .ide-presence-avatars-row {
+    display: none;
+  }
+
+  /* 11. Status bar: compact */
+  .ide-status-bar {
+    font-size: 0.65rem;
+    padding: 0 8px;
+    overflow: hidden;
+  }
+
+  .status-item {
+    margin-right: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ── Small mobile (≤480px) ── */
+@media (max-width: 480px) {
+  .upgraded-ide-pane {
+    height: calc(100svh - 100px);
+    border-radius: 6px;
+  }
+
+  /* Tuck activity bar even tighter */
+  .ide-activity-bar {
+    width: 40px;
+  }
+
+  .activity-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
+
+  /* Tabs: icon-only, smaller */
+  .editor-tab-item {
+    padding: 0 8px;
+    font-size: 0.7rem;
+    max-width: 110px;
+  }
+
+  /* Bottom terminal: compact */
+  .ide-bottom-terminal {
+    height: 150px;
+  }
+
+  .terminal-input-column {
+    max-height: 65px;
+  }
+
+  .terminal-panel-header {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
+
+  /* Sidebar overlay width */
+  .ide-sidebar-panel.mobile-visible {
+    width: 200px !important;
+  }
+
+  /* AI panel overlay width */
+  .ide-ai-panel.mobile-visible {
+    width: min(90vw, 260px);
+  }
+
+  /* Code controls bar */
+  .code-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  /* Shortcut guide: hide on very small screens */
+  .shortcut-guide {
+    display: none;
+  }
+}
+
+/* ── Extra-small (≤360px) ── */
+@media (max-width: 360px) {
+  .upgraded-ide-pane {
+    height: calc(100svh - 90px);
+  }
+
+  .ide-activity-bar {
+    width: 36px;
+  }
+
+  .activity-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 0.9rem;
+  }
+
+  .ide-bottom-terminal {
+    height: 130px;
+  }
+}

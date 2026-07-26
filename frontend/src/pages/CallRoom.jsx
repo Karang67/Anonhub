@@ -314,18 +314,23 @@ export default function CallRoom() {
     const socket = initSocket();
     socketRef.current = socket;
 
-    socket.on('connect', () => {
+    // Join room helper — called on connect (and immediately if already connected)
+    const doJoinRoom = () => {
       setConnected(true);
       setConnectionStatus('connected');
       const savedKey = sessionStorage.getItem(`accesskey_project_${roomName}`) || getCookie(`accesskey_project_${roomName}`);
-      socket.emit('join room', { room: roomName, accessKey: savedKey });
+      // Use 'join-call-room' (not 'join room') — the standard 'join room' validates against
+      // a ChatRoom MongoDB document which may not exist for a video-only call room.
+      socket.emit('join-call-room', { room: roomName, accessKey: savedKey });
       setRoster(prev => {
         const selfId = socket.id;
         const already = prev.find(r => r.socketId === selfId);
         if (already) return prev;
         return [...prev, { socketId: selfId, username: username || 'You' }];
       });
-    });
+    };
+
+    socket.on('connect', doJoinRoom);
 
     socket.on('disconnect', () => {
       setConnected(false);
@@ -353,27 +358,21 @@ export default function CallRoom() {
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
     });
 
+    // Server emits 'room users' with the full roster on join/leave (not user-joined/user-left)
+    socket.on('room users', (users) => {
+      setRoster(users.map(u => ({ socketId: u.id, username: u.username })));
+    });
+
+    // Keep user-joined/user-left as fallbacks in case other parts of the system use them
     socket.on('user-joined', ({ username: u, socketId: sid }) => {
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
         return [...prev, { socketId: sid, username: u }];
       });
-      setMessages(prev => [...prev, {
-        id: `sys-${Date.now()}-${sid}`,
-        type: 'system',
-        text: `${u} joined the room`,
-        ts: Date.now()
-      }]);
     });
 
     socket.on('user-left', ({ username: u, socketId: sid }) => {
       setRoster(prev => prev.filter(r => r.socketId !== sid));
-      setMessages(prev => [...prev, {
-        id: `sys-${Date.now()}-${sid}`,
-        type: 'system',
-        text: `${u} left the room`,
-        ts: Date.now()
-      }]);
     });
 
     socket.on('chat message', ({ username: u, msg, timestamp }) => {
@@ -480,6 +479,12 @@ export default function CallRoom() {
 
     socket.connect();
 
+    // If socket was already connected before listeners were attached (shouldn't happen with
+    // autoConnect:false, but guard anyway)
+    if (socket.connected) {
+      doJoinRoom();
+    }
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
@@ -487,6 +492,7 @@ export default function CallRoom() {
       socket.off('reconnect_failed');
       socket.off('set username');
       socket.off('username updated');
+      socket.off('room users');
       socket.off('user-joined');
       socket.off('user-left');
       socket.off('chat message');
@@ -500,6 +506,7 @@ export default function CallRoom() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, roomName]);
+
 
   // ─── Auto-scroll chat ────────────────────────────────────────────────────────
   useEffect(() => {
