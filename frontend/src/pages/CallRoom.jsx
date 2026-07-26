@@ -72,54 +72,83 @@ function RemoteVideoTile({ peer, micMutedMap }) {
       return;
     }
 
-    // Assign srcObject — a new MediaStream is created on every ontrack call
-    videoEl.srcObject = stream;
+    // CRITICAL: Only set srcObject if it's different to prevent resetting playback
+    if (videoEl.srcObject !== stream) {
+      videoEl.srcObject = stream;
+    }
 
-    // Use video element events as the source of truth for whether frames are flowing.
-    // readyState on the track is unreliable — remote tracks can be 'live' before
-    // actual video frames start arriving.
-    const onPlaying = () => setHasVideo(true);
-    const onLoadedMetadata = () => {
-      // Metadata loaded means video dimensions are known — try to play
+    const playVideo = () => {
       videoEl.play().catch(() => {});
     };
-    const onVideoError = () => setHasVideo(false);
+
+    // Evaluate if stream has usable video tracks
+    const checkVideo = () => {
+      const vTracks = stream.getVideoTracks();
+      const hasActiveTrack = vTracks.length > 0 && vTracks.some(t => t.readyState === 'live' && t.enabled);
+      if (hasActiveTrack) {
+        setHasVideo(true);
+      }
+    };
+
+    checkVideo();
+    playVideo();
+
+    const onPlaying = () => {
+      setHasVideo(true);
+    };
+
+    const onLoadedMetadata = () => {
+      playVideo();
+    };
+
+    const onResize = () => {
+      if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        setHasVideo(true);
+      }
+    };
 
     videoEl.addEventListener('playing', onPlaying);
     videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
-    videoEl.addEventListener('error', onVideoError);
+    videoEl.addEventListener('resize', onResize);
 
-    // Attempt to play immediately
-    videoEl.play().catch(() => {});
-
-    // Fallback: if a video track exists but 'playing' hasn't fired within 2s,
-    // force hasVideo=true so we don't permanently block the video with the avatar.
-    const vTracks = stream.getVideoTracks();
-    const hasVideoTrack = vTracks.length > 0 && vTracks.some(t => t.readyState !== 'ended');
-    let fallbackTimer = null;
-    if (hasVideoTrack) {
-      fallbackTimer = setTimeout(() => setHasVideo(true), 2000);
-    }
-
-    // Track add/remove listeners
-    const onAddTrack = () => {
-      const vt = stream.getVideoTracks();
-      if (vt.length > 0 && vt.some(t => t.readyState !== 'ended')) {
-        videoEl.play().catch(() => {});
-      }
+    // Track listeners for unmute/mute/addtrack
+    const handleTrackUpdate = () => {
+      checkVideo();
+      playVideo();
     };
-    stream.addEventListener('addtrack', onAddTrack);
-    stream.addEventListener('removetrack', onAddTrack);
+
+    stream.addEventListener('addtrack', handleTrackUpdate);
+    stream.addEventListener('removetrack', handleTrackUpdate);
+
+    const vTracks = stream.getVideoTracks();
+    vTracks.forEach(t => {
+      t.addEventListener('unmute', handleTrackUpdate);
+      t.addEventListener('mute', handleTrackUpdate);
+      t.addEventListener('ended', handleTrackUpdate);
+    });
+
+    // Fallback timer: if stream has video tracks, force hasVideo = true after 500ms
+    const timer = setTimeout(() => {
+      if (stream.getVideoTracks().length > 0) {
+        setHasVideo(true);
+        playVideo();
+      }
+    }, 500);
 
     return () => {
-      if (fallbackTimer) clearTimeout(fallbackTimer);
+      clearTimeout(timer);
       videoEl.removeEventListener('playing', onPlaying);
       videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
-      videoEl.removeEventListener('error', onVideoError);
-      stream.removeEventListener('addtrack', onAddTrack);
-      stream.removeEventListener('removetrack', onAddTrack);
+      videoEl.removeEventListener('resize', onResize);
+      stream.removeEventListener('addtrack', handleTrackUpdate);
+      stream.removeEventListener('removetrack', handleTrackUpdate);
+      vTracks.forEach(t => {
+        t.removeEventListener('unmute', handleTrackUpdate);
+        t.removeEventListener('mute', handleTrackUpdate);
+        t.removeEventListener('ended', handleTrackUpdate);
+      });
     };
-  }, [peer.stream]);
+  }, [peer.stream, peer.version]);
 
   const isMuted = micMutedMap?.[peer.socketId];
 
@@ -154,6 +183,7 @@ function RemoteVideoTile({ peer, micMutedMap }) {
     </div>
   );
 }
+
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CallRoom() {
@@ -267,26 +297,26 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      // Each ontrack call creates a NEW MediaStream so the reference always changes.
-      // This forces React's useEffect([peer.stream]) in RemoteVideoTile to re-run
-      // for EVERY incoming track (audio AND video), ensuring the video element
-      // always gets the latest stream with all tracks attached.
-      const prevStream = streamsRef.current[peerSocketId];
-      const newStream = new MediaStream();
-      if (prevStream) {
-        prevStream.getTracks().forEach(t => newStream.addTrack(t)); // copy existing tracks
+      // Use native stream if available, otherwise reuse existing or create fallback
+      let remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : streamsRef.current[peerSocketId];
+      if (!remoteStream) {
+        remoteStream = new MediaStream();
+        streamsRef.current[peerSocketId] = remoteStream;
       }
-      newStream.addTrack(event.track); // add the new track
-      streamsRef.current[peerSocketId] = newStream;
+      if (!remoteStream.getTracks().some(t => t.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
+      streamsRef.current[peerSocketId] = remoteStream;
 
       setPeers(prev => {
         const idx = prev.findIndex(p => p.socketId === peerSocketId);
+        const version = Date.now();
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: newStream };
+          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: remoteStream, version };
           return updated;
         }
-        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: newStream }];
+        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: remoteStream, version }];
       });
     };
 
