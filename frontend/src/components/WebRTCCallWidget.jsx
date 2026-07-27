@@ -322,37 +322,36 @@ class MoQSession {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     let frameCount = 0;
-    let lastTime = 0;
 
-    const captureLoop = (now) => {
-      if (!this.connected || (loopId && loopId !== this.activeVideoLoopId)) return;
-      if (now - lastTime >= 35) {
-        lastTime = now;
-        if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const captureStep = () => {
+      if (!this.connected || (loopId && loopId !== this.activeVideoLoopId)) {
+        clearInterval(timerId);
+        return;
+      }
 
-          if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-            try {
-              const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              const keyFrame = this.forceNextKeyframe || frameCount === 0 || frameCount % 12 === 0;
-              if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+      if (video.readyState >= 2) {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-              this.videoEncoder.encode(frame, { keyFrame });
-              frame.close();
-              frameCount++;
-            } catch (e) {
-              console.warn('Fallback VideoFrame creation error:', e);
-            }
+        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+          try {
+            const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+            const keyFrame = this.forceNextKeyframe || frameCount === 0 || frameCount % 12 === 0;
+            if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
+            this.videoEncoder.encode(frame, { keyFrame });
+            frame.close();
+            frameCount++;
+          } catch (e) {
+            console.warn('Fallback VideoFrame creation error:', e);
           }
         }
       }
-      requestAnimationFrame(captureLoop);
     };
 
-    video.onloadedmetadata = () => requestAnimationFrame(captureLoop);
-    if (video.readyState >= 2) requestAnimationFrame(captureLoop);
+    // Use setInterval so video encoding continues even when working outside the browser window!
+    const timerId = setInterval(captureStep, 35);
   }
 
   fallbackAudioData(audioTrack) {
@@ -637,7 +636,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           audio: true
         });
       } catch (e) {
-        // Microphone audio fallback if camera is unavailable
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
@@ -826,7 +824,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const toggleScreenShare = async () => {
     if (!inCall) {
       try {
-        // Direct screen sharing start without requiring camera first
         let stream;
         try {
           stream = await navigator.mediaDevices.getDisplayMedia({
@@ -846,7 +843,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
         const screenTrack = stream.getVideoTracks()[0];
 
-        // Init MoQ session for screen share
         const moqServerUrl = 'https://localhost:8554/moq_server';
         const session = new MoQSession(
           moqServerUrl,

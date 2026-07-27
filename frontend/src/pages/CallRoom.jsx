@@ -319,37 +319,36 @@ class MoQTransportClient {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     let frameIdx = 0;
-    let lastTime = 0;
 
-    const captureLoop = (now) => {
-      if (!this.connected || (loopId && loopId !== this.activeVideoLoopId)) return;
-      if (now - lastTime >= 35) {
-        lastTime = now;
-        if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const captureStep = () => {
+      if (!this.connected || (loopId && loopId !== this.activeVideoLoopId)) {
+        clearInterval(timerId);
+        return;
+      }
 
-          if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-            try {
-              const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              const keyFrame = this.forceNextKeyframe || frameIdx === 0 || frameIdx % 12 === 0;
-              if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+      if (video.readyState >= 2) {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-              this.videoEncoder.encode(frame, { keyFrame });
-              frame.close();
-              frameIdx++;
-            } catch (e) {
-              console.warn('CallRoom VideoFrame fallback error:', e);
-            }
+        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+          try {
+            const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+            const keyFrame = this.forceNextKeyframe || frameIdx === 0 || frameIdx % 12 === 0;
+            if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
+            this.videoEncoder.encode(frame, { keyFrame });
+            frame.close();
+            frameIdx++;
+          } catch (e) {
+            console.warn('CallRoom VideoFrame fallback error:', e);
           }
         }
       }
-      requestAnimationFrame(captureLoop);
     };
 
-    video.onloadedmetadata = () => requestAnimationFrame(captureLoop);
-    if (video.readyState >= 2) requestAnimationFrame(captureLoop);
+    // Use setInterval so screen capture continues even when working outside the app window!
+    const timerId = setInterval(captureStep, 35);
   }
 
   fallbackAudioData(audioTrack) {
