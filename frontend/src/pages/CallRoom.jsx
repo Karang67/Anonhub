@@ -202,7 +202,7 @@ class MoQTransportClient {
       source.connect(this.audioCtx.destination);
 
       const currentTime = this.audioCtx.currentTime;
-      if (!this.nextAudioTime || this.nextAudioTime < currentTime || this.nextAudioTime > currentTime + 0.06) {
+      if (!this.nextAudioTime || this.nextAudioTime < currentTime || this.nextAudioTime > currentTime + 0.05) {
         this.nextAudioTime = currentTime + 0.005;
       }
       source.start(this.nextAudioTime);
@@ -237,10 +237,10 @@ class MoQTransportClient {
         });
         this.videoEncoder.configure({
           codec: 'vp8',
-          width: settings.width || 1280,
-          height: settings.height || 720,
-          bitrate: 2000000,
-          framerate: settings.frameRate || 30,
+          width: settings.width || 640,
+          height: settings.height || 480,
+          bitrate: 400000,
+          framerate: settings.frameRate || 24,
           latencyMode: 'realtime'
         });
 
@@ -260,7 +260,7 @@ class MoQTransportClient {
       }
     }
 
-    // Configure AudioEncoder (Opus Real-Time)
+    // Configure AudioEncoder (Opus Real-Time 20ms)
     if (audioTrack && typeof AudioEncoder !== 'undefined') {
       try {
         this.audioEncoder = new AudioEncoder({
@@ -271,20 +271,10 @@ class MoQTransportClient {
           codec: 'opus',
           sampleRate: 48000,
           numberOfChannels: 1,
-          bitrate: 64000
+          bitrate: 48000
         });
 
-        if (typeof MediaStreamTrackProcessor !== 'undefined') {
-          try {
-            const processor = new MediaStreamTrackProcessor({ track: audioTrack });
-            const reader = processor.readable.getReader();
-            this.processAudioData(reader);
-          } catch (e) {
-            this.fallbackAudioData(audioTrack);
-          }
-        } else {
-          this.fallbackAudioData(audioTrack);
-        }
+        this.fallbackAudioData(audioTrack);
       } catch (e) {
         console.error('AudioEncoder initialization error:', e);
       }
@@ -304,17 +294,17 @@ class MoQTransportClient {
 
     const captureLoop = (now) => {
       if (!this.connected) return;
-      if (now - lastTime >= 30) {
+      if (now - lastTime >= 40) { // 25 FPS smooth playback
         lastTime = now;
         if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
+          canvas.width = video.videoWidth || 480;
+          canvas.height = video.videoHeight || 360;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
             try {
               const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              const keyFrame = frameIdx % 15 === 0;
+              const keyFrame = frameIdx % 12 === 0;
               this.videoEncoder.encode(frame, { keyFrame });
               frame.close();
               frameIdx++;
@@ -335,25 +325,39 @@ class MoQTransportClient {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
-      const processor = audioCtx.createScriptProcessor(512, 1, 1);
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+
+      let bufferPool = new Float32Array(0);
 
       processor.onaudioprocess = (e) => {
         if (!this.connected) return;
         const inputData = e.inputBuffer.getChannelData(0);
-        if (this.audioEncoder && this.audioEncoder.state === 'configured') {
-          try {
-            const audioData = new AudioData({
-              format: 'f32-planar',
-              sampleRate: 48000,
-              numberOfFrames: inputData.length,
-              numberOfChannels: 1,
-              timestamp: performance.now() * 1000,
-              data: inputData
-            });
-            this.audioEncoder.encode(audioData);
-            audioData.close();
-          } catch (err) {
-            // AudioData encode error
+
+        const temp = new Float32Array(bufferPool.length + inputData.length);
+        temp.set(bufferPool, 0);
+        temp.set(inputData, bufferPool.length);
+        bufferPool = temp;
+
+        // Process exact 960-sample Opus frames (20ms at 48kHz)
+        while (bufferPool.length >= 960) {
+          const chunk = bufferPool.slice(0, 960);
+          bufferPool = bufferPool.slice(960);
+
+          if (this.audioEncoder && this.audioEncoder.state === 'configured') {
+            try {
+              const audioData = new AudioData({
+                format: 'f32-planar',
+                sampleRate: 48000,
+                numberOfFrames: 960,
+                numberOfChannels: 1,
+                timestamp: performance.now() * 1000,
+                data: chunk
+              });
+              this.audioEncoder.encode(audioData);
+              audioData.close();
+            } catch (err) {
+              // AudioData encode error
+            }
           }
         }
       };
@@ -372,7 +376,7 @@ class MoQTransportClient {
         const { value: frame, done } = await reader.read();
         if (done || !frame) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameIdx % 15 === 0;
+          const keyFrame = frameIdx % 12 === 0;
           this.videoEncoder.encode(frame, { keyFrame });
           frameIdx++;
         }
@@ -840,8 +844,8 @@ export default function CallRoom() {
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              const width = videoFrame.displayWidth || 640;
-              const height = videoFrame.displayHeight || 480;
+              const width = videoFrame.displayWidth || 480;
+              const height = videoFrame.displayHeight || 360;
               if (canvas.width !== width) canvas.width = width;
               if (canvas.height !== height) canvas.height = height;
               ctx.drawImage(videoFrame, 0, 0, width, height);
