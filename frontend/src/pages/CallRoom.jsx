@@ -42,6 +42,7 @@ import {
   Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw
 } from 'lucide-react';
 import { initSocket, getCookie, setCookie } from '../services/socket';
+import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
 import './CallRoom.css';
 
@@ -575,20 +576,22 @@ export default function CallRoom() {
   // ── Socket / connection ──────────────────────────────────────────────────────
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState(
+    globalCallSession.isSessionActive(roomName) ? 'connected' : 'disconnected'
+  );
   const [transportMode, setTransportMode] = useState('MoQ');
 
   // ── MoQ & Call State ────────────────────────────────────────────────────────
-  const [inCall, setInCall] = useState(false);
+  const [inCall, setInCall] = useState(globalCallSession.isSessionActive(roomName));
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
-  const [screenSharing, setScreenSharing] = useState(false);
-  const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
+  const [screenSharing, setScreenSharing] = useState(globalCallSession.screenSharing);
+  const [facingMode, setFacingMode] = useState(globalCallSession.facingMode || 'user');
   const [peers, setPeers] = useState([]);
-  const localStreamRef = useRef(null);
+  const localStreamRef = useRef(globalCallSession.localStream);
   const localVideoRef = useRef(null);
-  const screenStreamRef = useRef(null);
-  const moqClientRef = useRef(null);
+  const screenStreamRef = useRef(globalCallSession.screenStream);
+  const moqClientRef = useRef(globalCallSession.moqSession);
   const peerCanvasRefs = useRef({});
 
   // WEBRTC_DEPRECATED
@@ -687,32 +690,18 @@ export default function CallRoom() {
 
   // ─── End Call Cleanup ────────────────────────────────────────────────────────
   const endCallCleanup = useCallback(() => {
-    // WEBRTC_DEPRECATED
-    // socketRef.current?.emit('webrtc-leave-call', { projectName: roomName });
+    globalCallSession.endSession();
 
-    socketRef.current?.emit('moq-leave-room', { projectName: roomName });
-
-    if (moqClientRef.current) {
-      moqClientRef.current.disconnect();
-      moqClientRef.current = null;
-    }
-
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current = null;
-
-    // WEBRTC_DEPRECATED
-    /*
-    Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch { } });
-    */
+    moqClientRef.current = null;
 
     setPeers([]);
     setInCall(false);
     setScreenSharing(false);
     setVideoMuted(false);
     setMicMuted(false);
-  }, [roomName]);
+  }, []);
 
   // ─── Socket setup after auth ──────────────────────────────────────────────────
   useEffect(() => {
@@ -766,13 +755,6 @@ export default function CallRoom() {
       })));
     });
 
-    // WEBRTC_DEPRECATED
-    /*
-    socket.on('webrtc-user-joined', handleWebRTCUserJoined);
-    socket.on('webrtc-signal', handleWebRTCSignal);
-    socket.on('webrtc-user-left', handleWebRTCUserLeft);
-    */
-
     socket.on('moq-user-joined', handleUserJoined);
     socket.on('moq-user-left', ({ socketId: sid }) => {
       setPeers(prev => prev.filter(p => p.socketId !== sid));
@@ -796,10 +778,10 @@ export default function CallRoom() {
       socket.off('moq-user-joined');
       socket.off('moq-user-left');
       socket.off('peer-mic-status');
-      endCallCleanup();
+      // NOTE: Call & screen sharing remain active across route navigation!
       socket.disconnect();
     };
-  }, [isAuthed, roomName, endCallCleanup, sidebarOpen, username, handleUserJoined]);
+  }, [isAuthed, roomName, sidebarOpen, username, handleUserJoined]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -812,6 +794,16 @@ export default function CallRoom() {
   // ─── Start Call ──────────────────────────────────────────────────────────────
   const startCall = async () => {
     try {
+      if (globalCallSession.isSessionActive(roomName)) {
+        localStreamRef.current = globalCallSession.localStream;
+        screenStreamRef.current = globalCallSession.screenStream;
+        moqClientRef.current = globalCallSession.moqSession;
+        setInCall(true);
+        setScreenSharing(globalCallSession.screenSharing);
+        setConnectionStatus('connected');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
         audio: true
@@ -828,11 +820,6 @@ export default function CallRoom() {
           localVideoRef.current.play().catch(() => { });
         }
       });
-
-      // WEBRTC_DEPRECATED
-      /*
-      socketRef.current?.emit('webrtc-join-call', { projectName: roomName }, (response) => { ... });
-      */
 
       // Initialize MoQ Client
       const moqUrl = 'https://localhost:8554/moq_server';
@@ -877,6 +864,13 @@ export default function CallRoom() {
       setTransportMode(client.mode === 'WebTransport' ? 'MoQ (QUIC)' : 'MoQ (Relay)');
 
       client.startMediaEncoding(stream.getVideoTracks()[0], stream.getAudioTracks()[0]);
+
+      globalCallSession.setSession({
+        roomName,
+        localStream: stream,
+        moqSession: client,
+        socket: socketRef.current
+      });
 
       socketRef.current?.emit('moq-join-room', { projectName: roomName, username }, (response) => {
         if (response && Array.isArray(response.existingPeers)) {
@@ -943,6 +937,7 @@ export default function CallRoom() {
 
       localStreamRef.current.addTrack(newVideoTrack);
       setFacingMode(targetMode);
+      globalCallSession.facingMode = targetMode;
       replaceVideoTrack(newVideoTrack);
 
       if (moqClientRef.current) {
@@ -967,16 +962,30 @@ export default function CallRoom() {
 
   const toggleScreenShare = async () => {
     if (screenSharing) {
-      screenStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenStreamRef.current = null;
+      globalCallSession.stopScreenShare();
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(t => t.stop());
+        screenStreamRef.current = null;
+      }
       setScreenSharing(false);
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
       if (camTrack) replaceVideoTrack(camTrack);
     } else {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: 'monitor',
+            logicalSurface: true,
+            cursor: 'always'
+          },
+          audio: true
+        });
+
         screenStreamRef.current = stream;
+        globalCallSession.screenStream = stream;
+        globalCallSession.screenSharing = true;
         setScreenSharing(true);
+
         const screenTrack = stream.getVideoTracks()[0];
         replaceVideoTrack(screenTrack);
 
@@ -986,12 +995,16 @@ export default function CallRoom() {
         }
 
         screenTrack.onended = () => {
+          globalCallSession.stopScreenShare();
           setScreenSharing(false);
           const camTrack = localStreamRef.current?.getVideoTracks()[0];
           if (camTrack) replaceVideoTrack(camTrack);
         };
       } catch (err) {
-        if (err.name !== 'AbortError') alert('Failed to start screen sharing.');
+        console.error('Failed to start system screen share:', err);
+        if (err.name !== 'AbortError') {
+          alert('Failed to start screen sharing. Please check permissions.');
+        }
       }
     }
   };
@@ -1035,7 +1048,6 @@ export default function CallRoom() {
         <div className="callroom-header-left">
           <button
             onClick={() => {
-              endCallCleanup();
               navigate('/');
             }}
             className="callroom-home-btn"
