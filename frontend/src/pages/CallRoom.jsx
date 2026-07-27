@@ -977,6 +977,8 @@ export default function CallRoom() {
     if (track) {
       track.enabled = !track.enabled;
       setVideoMuted(!track.enabled);
+    } else {
+      setVideoMuted(prev => !prev);
     }
   };
 
@@ -1122,6 +1124,14 @@ export default function CallRoom() {
           globalCallSession.stopScreenShare();
           setScreenSharing(false);
           setShowScreenTip(false);
+          const camTrack = localStreamRef.current?.getVideoTracks()[0];
+          if (camTrack) {
+            camTrack.enabled = !videoMuted;
+            if (!videoMuted) {
+              replaceVideoTrack(camTrack);
+              if (moqClientRef.current) moqClientRef.current.switchVideoTrack(camTrack);
+            }
+          }
         };
         return;
       } catch (err) {
@@ -1140,8 +1150,11 @@ export default function CallRoom() {
       setShowScreenTip(false);
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
       if (camTrack) {
-        replaceVideoTrack(camTrack);
-        if (moqClientRef.current) moqClientRef.current.switchVideoTrack(camTrack);
+        camTrack.enabled = !videoMuted;
+        if (!videoMuted) {
+          replaceVideoTrack(camTrack);
+          if (moqClientRef.current) moqClientRef.current.switchVideoTrack(camTrack);
+        }
       }
     } else {
       try {
@@ -1174,8 +1187,11 @@ export default function CallRoom() {
           setShowScreenTip(false);
           const camTrack = localStreamRef.current?.getVideoTracks()[0];
           if (camTrack) {
-            replaceVideoTrack(camTrack);
-            if (moqClientRef.current) moqClientRef.current.switchVideoTrack(camTrack);
+            camTrack.enabled = !videoMuted;
+            if (!videoMuted) {
+              replaceVideoTrack(camTrack);
+              if (moqClientRef.current) moqClientRef.current.switchVideoTrack(camTrack);
+            }
           }
         };
       } catch (err) {
