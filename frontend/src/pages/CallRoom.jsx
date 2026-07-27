@@ -39,7 +39,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff,
-  Users, MessageSquare, X, Send, ChevronRight, Home
+  Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw
 } from 'lucide-react';
 import { initSocket, getCookie, setCookie } from '../services/socket';
 import AccessKeyModal from '../components/AccessKeyModal';
@@ -231,6 +231,10 @@ class MoQTransportClient {
     if (videoTrack && typeof VideoEncoder !== 'undefined') {
       try {
         const settings = videoTrack.getSettings();
+        if (this.videoEncoder) {
+          try { this.videoEncoder.close(); } catch (e) { }
+        }
+
         this.videoEncoder = new VideoEncoder({
           output: (chunk) => this.sendVideoChunk(chunk),
           error: (err) => console.error('VideoEncoder error:', err)
@@ -263,18 +267,20 @@ class MoQTransportClient {
     // Configure AudioEncoder (Opus Real-Time 20ms)
     if (audioTrack && typeof AudioEncoder !== 'undefined') {
       try {
-        this.audioEncoder = new AudioEncoder({
-          output: (chunk) => this.sendAudioChunk(chunk),
-          error: (err) => console.error('AudioEncoder error:', err)
-        });
-        this.audioEncoder.configure({
-          codec: 'opus',
-          sampleRate: 48000,
-          numberOfChannels: 1,
-          bitrate: 48000
-        });
+        if (!this.audioEncoder) {
+          this.audioEncoder = new AudioEncoder({
+            output: (chunk) => this.sendAudioChunk(chunk),
+            error: (err) => console.error('AudioEncoder error:', err)
+          });
+          this.audioEncoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 1,
+            bitrate: 48000
+          });
 
-        this.fallbackAudioData(audioTrack);
+          this.fallbackAudioData(audioTrack);
+        }
       } catch (e) {
         console.error('AudioEncoder initialization error:', e);
       }
@@ -577,6 +583,7 @@ export default function CallRoom() {
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
   const [peers, setPeers] = useState([]);
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -805,10 +812,14 @@ export default function CallRoom() {
   // ─── Start Call ──────────────────────────────────────────────────────────────
   const startCall = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: true
+      });
       localStreamRef.current = stream;
       setVideoMuted(false);
       setMicMuted(false);
+      setFacingMode('user');
       setInCall(true);
 
       requestAnimationFrame(() => {
@@ -901,6 +912,46 @@ export default function CallRoom() {
     if (track) {
       track.enabled = !track.enabled;
       setVideoMuted(!track.enabled);
+    }
+  };
+
+  const switchCamera = async () => {
+    if (!localStreamRef.current || screenSharing) return;
+
+    const targetMode = facingMode === 'user' ? 'environment' : 'user';
+
+    try {
+      let newStream;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: targetMode } }
+        });
+      } catch (e) {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: targetMode }
+        });
+      }
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (!newVideoTrack) return;
+
+      const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (oldVideoTrack) {
+        oldVideoTrack.stop();
+        localStreamRef.current.removeTrack(oldVideoTrack);
+      }
+
+      localStreamRef.current.addTrack(newVideoTrack);
+      setFacingMode(targetMode);
+      replaceVideoTrack(newVideoTrack);
+
+      if (moqClientRef.current) {
+        const audioTrack = localStreamRef.current.getAudioTracks()[0];
+        moqClientRef.current.startMediaEncoding(newVideoTrack, audioTrack);
+      }
+    } catch (err) {
+      console.error('Camera switch error:', err);
+      alert('Could not switch camera. Check if a secondary camera is available.');
     }
   };
 
@@ -1138,6 +1189,16 @@ export default function CallRoom() {
             >
               {videoMuted ? <VideoOff size={20} /> : <Video size={20} />}
               <span className="callroom-ctrl-btn-label">{videoMuted ? 'Cam Off' : 'Camera'}</span>
+            </button>
+
+            <button
+              id="callroom-switch-cam-btn"
+              className="callroom-ctrl-btn"
+              onClick={switchCamera}
+              title={`Switch to ${facingMode === 'user' ? 'Back' : 'Front'} Camera`}
+            >
+              <RefreshCw size={20} />
+              <span className="callroom-ctrl-btn-label">Flip</span>
             </button>
 
             <button

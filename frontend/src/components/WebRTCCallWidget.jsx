@@ -37,7 +37,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw } from 'lucide-react';
 import './WebRTCCallWidget.css';
 
 // WEBRTC_DEPRECATED
@@ -233,6 +233,10 @@ class MoQSession {
     if (videoTrack && typeof VideoEncoder !== 'undefined') {
       try {
         const settings = videoTrack.getSettings();
+        if (this.videoEncoder) {
+          try { this.videoEncoder.close(); } catch (e) { }
+        }
+
         this.videoEncoder = new VideoEncoder({
           output: (chunk, metadata) => this.handleEncodedVideoChunk(chunk, metadata),
           error: (e) => console.error('VideoEncoder error:', e)
@@ -266,19 +270,21 @@ class MoQSession {
     // Configure AudioEncoder (Opus Real-Time 20ms)
     if (audioTrack && typeof AudioEncoder !== 'undefined') {
       try {
-        this.audioEncoder = new AudioEncoder({
-          output: (chunk, metadata) => this.handleEncodedAudioChunk(chunk, metadata),
-          error: (e) => console.error('AudioEncoder error:', e)
-        });
+        if (!this.audioEncoder) {
+          this.audioEncoder = new AudioEncoder({
+            output: (chunk, metadata) => this.handleEncodedAudioChunk(chunk, metadata),
+            error: (e) => console.error('AudioEncoder error:', e)
+          });
 
-        this.audioEncoder.configure({
-          codec: 'opus',
-          sampleRate: 48000,
-          numberOfChannels: 1,
-          bitrate: 48000
-        });
+          this.audioEncoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 1,
+            bitrate: 48000
+          });
 
-        this.fallbackAudioData(audioTrack);
+          this.fallbackAudioData(audioTrack);
+        }
       } catch (err) {
         console.error('WebCodecs AudioEncoder setup error:', err);
       }
@@ -298,7 +304,7 @@ class MoQSession {
 
     const captureLoop = (now) => {
       if (!this.connected) return;
-      if (now - lastTime >= 40) { // 25 FPS for smooth low-latency streaming
+      if (now - lastTime >= 40) { // 25 FPS smooth streaming
         lastTime = now;
         if (video.readyState >= 2) {
           canvas.width = video.videoWidth || 480;
@@ -537,6 +543,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
   const [peers, setPeers] = useState([]); // [{ socketId, username }]
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -581,7 +588,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const startCall = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { facingMode: 'user' },
         audio: true
       });
       localStreamRef.current = stream;
@@ -589,6 +596,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setInCall(true);
       setVideoMuted(false);
       setMicMuted(false);
+      setFacingMode('user');
       setConnectionStatus('connected');
 
       requestAnimationFrame(() => {
@@ -772,6 +780,46 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     }
   };
 
+  const switchCamera = async () => {
+    if (!localStreamRef.current || screenSharing) return;
+
+    const targetMode = facingMode === 'user' ? 'environment' : 'user';
+
+    try {
+      let newStream;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: targetMode } }
+        });
+      } catch (e) {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: targetMode }
+        });
+      }
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      if (!newVideoTrack) return;
+
+      const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (oldVideoTrack) {
+        oldVideoTrack.stop();
+        localStreamRef.current.removeTrack(oldVideoTrack);
+      }
+
+      localStreamRef.current.addTrack(newVideoTrack);
+      setFacingMode(targetMode);
+      replaceVideoTrack(newVideoTrack);
+
+      if (moqSessionRef.current) {
+        const audioTrack = localStreamRef.current.getAudioTracks()[0];
+        moqSessionRef.current.initEncoders(newVideoTrack, audioTrack);
+      }
+    } catch (err) {
+      console.error('Camera switch error:', err);
+      alert('Could not switch camera. Check if a secondary camera is available.');
+    }
+  };
+
   const toggleScreenShare = async () => {
     if (screenSharing) {
       if (screenStreamRef.current) {
@@ -905,6 +953,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               title={videoMuted ? 'Turn Video On' : 'Turn Video Off'}
             >
               {videoMuted ? <VideoOff size={16} /> : <Video size={16} />}
+            </button>
+
+            <button
+              onClick={switchCamera}
+              className="call-tool-btn"
+              title={`Switch Camera (${facingMode === 'user' ? 'Front' : 'Back'})`}
+            >
+              <RefreshCw size={16} />
             </button>
 
             <button
