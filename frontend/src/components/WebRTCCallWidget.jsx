@@ -109,7 +109,6 @@ class MoQSession {
   async connect() {
     this.connected = true;
 
-    // Initialize AudioContext inside user action
     try {
       this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       if (this.audioCtx.state === 'suspended') {
@@ -205,8 +204,8 @@ class MoQSession {
       source.connect(this.audioCtx.destination);
 
       const currentTime = this.audioCtx.currentTime;
-      if (!this.nextAudioTime || this.nextAudioTime < currentTime) {
-        this.nextAudioTime = currentTime + 0.02;
+      if (!this.nextAudioTime || this.nextAudioTime < currentTime || this.nextAudioTime > currentTime + 0.06) {
+        this.nextAudioTime = currentTime + 0.005;
       }
       source.start(this.nextAudioTime);
       this.nextAudioTime += buffer.duration;
@@ -230,7 +229,7 @@ class MoQSession {
       }
     }
 
-    // Configure VideoEncoder (VP8)
+    // Configure VideoEncoder (VP8 Real-Time Low Latency Mode)
     if (videoTrack && typeof VideoEncoder !== 'undefined') {
       try {
         const settings = videoTrack.getSettings();
@@ -244,7 +243,8 @@ class MoQSession {
           width: settings.width || 640,
           height: settings.height || 480,
           bitrate: 1000000,
-          framerate: settings.frameRate || 30
+          framerate: settings.frameRate || 30,
+          latencyMode: 'realtime'
         });
 
         if (typeof MediaStreamTrackProcessor !== 'undefined') {
@@ -263,7 +263,7 @@ class MoQSession {
       }
     }
 
-    // Configure AudioEncoder (Opus)
+    // Configure AudioEncoder (Opus Real-Time)
     if (audioTrack && typeof AudioEncoder !== 'undefined') {
       try {
         this.audioEncoder = new AudioEncoder({
@@ -304,38 +304,42 @@ class MoQSession {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     let frameCount = 0;
+    let lastTime = 0;
 
-    const captureLoop = () => {
+    const captureLoop = (now) => {
       if (!this.connected) return;
-      if (video.readyState >= 2) {
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (now - lastTime >= 30) {
+        lastTime = now;
+        if (video.readyState >= 2) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          try {
-            const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-            const keyFrame = frameCount % 30 === 0;
-            this.videoEncoder.encode(frame, { keyFrame });
-            frame.close();
-            frameCount++;
-          } catch (e) {
-            console.warn('Fallback VideoFrame creation error:', e);
+          if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+            try {
+              const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+              const keyFrame = frameCount % 15 === 0;
+              this.videoEncoder.encode(frame, { keyFrame });
+              frame.close();
+              frameCount++;
+            } catch (e) {
+              console.warn('Fallback VideoFrame creation error:', e);
+            }
           }
         }
       }
-      setTimeout(() => requestAnimationFrame(captureLoop), 1000 / 30);
+      requestAnimationFrame(captureLoop);
     };
 
-    video.onloadedmetadata = () => captureLoop();
-    if (video.readyState >= 2) captureLoop();
+    video.onloadedmetadata = () => requestAnimationFrame(captureLoop);
+    if (video.readyState >= 2) requestAnimationFrame(captureLoop);
   }
 
   fallbackAudioData(audioTrack) {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
-      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+      const processor = audioCtx.createScriptProcessor(512, 1, 1);
 
       processor.onaudioprocess = (e) => {
         if (!this.connected) return;
@@ -372,7 +376,7 @@ class MoQSession {
         const { value: frame, done } = await reader.read();
         if (done || !frame) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameCount % 30 === 0;
+          const keyFrame = frameCount % 15 === 0;
           this.videoEncoder.encode(frame, { keyFrame });
           frameCount++;
         }

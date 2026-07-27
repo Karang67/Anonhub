@@ -202,8 +202,8 @@ class MoQTransportClient {
       source.connect(this.audioCtx.destination);
 
       const currentTime = this.audioCtx.currentTime;
-      if (!this.nextAudioTime || this.nextAudioTime < currentTime) {
-        this.nextAudioTime = currentTime + 0.02;
+      if (!this.nextAudioTime || this.nextAudioTime < currentTime || this.nextAudioTime > currentTime + 0.06) {
+        this.nextAudioTime = currentTime + 0.005;
       }
       source.start(this.nextAudioTime);
       this.nextAudioTime += buffer.duration;
@@ -227,7 +227,7 @@ class MoQTransportClient {
       }
     }
 
-    // Configure VideoEncoder (VP8)
+    // Configure VideoEncoder (VP8 Real-Time Low Latency Mode)
     if (videoTrack && typeof VideoEncoder !== 'undefined') {
       try {
         const settings = videoTrack.getSettings();
@@ -240,7 +240,8 @@ class MoQTransportClient {
           width: settings.width || 1280,
           height: settings.height || 720,
           bitrate: 2000000,
-          framerate: settings.frameRate || 30
+          framerate: settings.frameRate || 30,
+          latencyMode: 'realtime'
         });
 
         if (typeof MediaStreamTrackProcessor !== 'undefined') {
@@ -259,7 +260,7 @@ class MoQTransportClient {
       }
     }
 
-    // Configure AudioEncoder (Opus)
+    // Configure AudioEncoder (Opus Real-Time)
     if (audioTrack && typeof AudioEncoder !== 'undefined') {
       try {
         this.audioEncoder = new AudioEncoder({
@@ -299,38 +300,42 @@ class MoQTransportClient {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     let frameIdx = 0;
+    let lastTime = 0;
 
-    const captureLoop = () => {
+    const captureLoop = (now) => {
       if (!this.connected) return;
-      if (video.readyState >= 2) {
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (now - lastTime >= 30) {
+        lastTime = now;
+        if (video.readyState >= 2) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          try {
-            const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-            const keyFrame = frameIdx % 30 === 0;
-            this.videoEncoder.encode(frame, { keyFrame });
-            frame.close();
-            frameIdx++;
-          } catch (e) {
-            console.warn('CallRoom VideoFrame fallback error:', e);
+          if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+            try {
+              const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+              const keyFrame = frameIdx % 15 === 0;
+              this.videoEncoder.encode(frame, { keyFrame });
+              frame.close();
+              frameIdx++;
+            } catch (e) {
+              console.warn('CallRoom VideoFrame fallback error:', e);
+            }
           }
         }
       }
-      setTimeout(() => requestAnimationFrame(captureLoop), 1000 / 30);
+      requestAnimationFrame(captureLoop);
     };
 
-    video.onloadedmetadata = () => captureLoop();
-    if (video.readyState >= 2) captureLoop();
+    video.onloadedmetadata = () => requestAnimationFrame(captureLoop);
+    if (video.readyState >= 2) requestAnimationFrame(captureLoop);
   }
 
   fallbackAudioData(audioTrack) {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
-      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+      const processor = audioCtx.createScriptProcessor(512, 1, 1);
 
       processor.onaudioprocess = (e) => {
         if (!this.connected) return;
@@ -367,7 +372,7 @@ class MoQTransportClient {
         const { value: frame, done } = await reader.read();
         if (done || !frame) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameIdx % 30 === 0;
+          const keyFrame = frameIdx % 15 === 0;
           this.videoEncoder.encode(frame, { keyFrame });
           frameIdx++;
         }
@@ -593,7 +598,7 @@ export default function CallRoom() {
     });
     setRoster(prev => {
       if (prev.find(r => r.socketId === socketId)) return prev;
-      return [...prev, { socketId, username: peerName || 'Participant' }];
+      return [...prev, { socketId: sid, username: peerName || 'Participant' }];
     });
   }, []);
 
