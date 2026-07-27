@@ -1843,12 +1843,25 @@ io.on('connection', (socket) => {
     // ─── MoQ Signaling & Roster Sync ──────────────────────────────────────────
     socket.on('moq-join-room', ({ projectName, username }, callback) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
-        if (!name) return;
+        if (!name) {
+            if (typeof callback === 'function') callback({ error: 'Invalid room name' });
+            return;
+        }
         const roomName = `${name}-moq`;
+        const roomClients = io.sockets.adapter.rooms.get(roomName);
+        const existingPeers = [];
+        if (roomClients) {
+            roomClients.forEach(clientId => {
+                if (clientId !== socket.id) {
+                    const u = activeUsers.get(clientId)?.username || 'Participant';
+                    existingPeers.push({ socketId: clientId, username: u });
+                }
+            });
+        }
         socket.join(roomName);
         const peerUsername = username || activeUsers.get(socket.id)?.username || 'Participant';
         socket.to(roomName).emit('moq-user-joined', { socketId: socket.id, username: peerUsername });
-        if (typeof callback === 'function') callback({ success: true });
+        if (typeof callback === 'function') callback({ success: true, existingPeers });
     });
 
     socket.on('moq-leave-room', ({ projectName }) => {

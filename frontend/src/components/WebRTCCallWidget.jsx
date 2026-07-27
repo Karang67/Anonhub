@@ -18,7 +18,7 @@
  *      https://<MEDIAMTX_HOST>:8554/moq_server/<roomName>/<username>/<trackType>
  * 
  *    Examples:
- *      - Screen Share Track: https://localhost:8554/moq_server/room123/userA/screen
+ *      - Screen Track: https://localhost:8554/moq_server/room123/userA/screen
  *      - Video Track:        https://localhost:8554/moq_server/room123/userA/video
  *      - Audio Track:        https://localhost:8554/moq_server/room123/userA/audio
  * 
@@ -103,10 +103,21 @@ class MoQSession {
     this.mode = 'WebTransport';
     this.peerDecoders = {};
     this.audioCtx = null;
+    this.nextAudioTime = 0;
   }
 
   async connect() {
     this.connected = true;
+
+    // Initialize AudioContext inside user action
+    try {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      if (this.audioCtx.state === 'suspended') {
+        await this.audioCtx.resume();
+      }
+    } catch (e) {
+      // AudioContext init fallback
+    }
 
     if (typeof WebTransport !== 'undefined') {
       try {
@@ -175,7 +186,7 @@ class MoQSession {
   playAudioData(audioData) {
     try {
       if (!this.audioCtx) {
-        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       }
       if (this.audioCtx.state === 'suspended') {
         this.audioCtx.resume();
@@ -192,9 +203,15 @@ class MoQSession {
       const source = this.audioCtx.createBufferSource();
       source.buffer = buffer;
       source.connect(this.audioCtx.destination);
-      source.start();
+
+      const currentTime = this.audioCtx.currentTime;
+      if (!this.nextAudioTime || this.nextAudioTime < currentTime) {
+        this.nextAudioTime = currentTime + 0.02;
+      }
+      source.start(this.nextAudioTime);
+      this.nextAudioTime += buffer.duration;
     } catch (e) {
-      // Audio catch
+      console.warn('Audio playback error:', e);
     }
   }
 
@@ -267,8 +284,10 @@ class MoQSession {
             const reader = processor.readable.getReader();
             this.readAudioData(reader);
           } catch (e) {
-            // Audio processor fallback
+            this.fallbackAudioData(audioTrack);
           }
+        } else {
+          this.fallbackAudioData(audioTrack);
         }
       } catch (err) {
         console.error('WebCodecs AudioEncoder setup error:', err);
@@ -310,6 +329,40 @@ class MoQSession {
 
     video.onloadedmetadata = () => captureLoop();
     if (video.readyState >= 2) captureLoop();
+  }
+
+  fallbackAudioData(audioTrack) {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+
+      processor.onaudioprocess = (e) => {
+        if (!this.connected) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        if (this.audioEncoder && this.audioEncoder.state === 'configured') {
+          try {
+            const audioData = new AudioData({
+              format: 'f32-planar',
+              sampleRate: 48000,
+              numberOfFrames: inputData.length,
+              numberOfChannels: 1,
+              timestamp: performance.now() * 1000,
+              data: inputData
+            });
+            this.audioEncoder.encode(audioData);
+            audioData.close();
+          } catch (err) {
+            // AudioData encode error catch
+          }
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+    } catch (e) {
+      console.warn('Audio fallback error:', e);
+    }
   }
 
   async readVideoFrames(reader) {
@@ -509,6 +562,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     }
   }, [socket]);
 
+  const handleUserJoined = useCallback(({ socketId, username: peerName }) => {
+    setPeers(prev => {
+      if (prev.find(p => p.socketId === socketId)) return prev;
+      return [...prev, { socketId, username: peerName || 'Participant' }];
+    });
+  }, []);
+
   const startCall = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -542,6 +602,9 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         username || 'anonymous',
         socket,
         (peerId, videoFrame) => {
+          // Ensure peer exists in state
+          handleUserJoined({ socketId: peerId, username: 'Participant' });
+
           // Draw videoFrame directly onto the peer canvas element
           const canvas = peerCanvasRefs.current[peerId];
           if (canvas) {
@@ -557,6 +620,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           videoFrame.close();
         },
         (peerId, audioData) => {
+          handleUserJoined({ socketId: peerId, username: 'Participant' });
           audioData.close();
         }
       );
@@ -570,7 +634,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       session.initEncoders(vTrack, aTrack);
 
       if (socket) {
-        socket.emit('moq-join-room', { projectName, username });
+        socket.emit('moq-join-room', { projectName, username }, (response) => {
+          if (response && Array.isArray(response.existingPeers)) {
+            response.existingPeers.forEach(({ socketId, username: peerName }) => {
+              handleUserJoined({ socketId, username: peerName });
+            });
+          }
+        });
       }
 
     } catch (err) {
@@ -629,13 +699,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setMicMutedMap(prev => ({ ...prev, [socketId]: muted }));
     };
 
-    const handleUserJoined = ({ socketId, username: peerName }) => {
-      setPeers(prev => {
-        if (prev.find(p => p.socketId === socketId)) return prev;
-        return [...prev, { socketId, username: peerName || 'Participant' }];
-      });
-    };
-
     const handleUserLeft = ({ socketId }) => {
       setPeers(prev => prev.filter(p => p.socketId !== socketId));
     };
@@ -667,7 +730,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         endCall();
       }
     };
-  }, [socket, projectName]);
+  }, [socket, projectName, handleUserJoined]);
 
   const toggleMic = () => {
     if (localStreamRef.current) {

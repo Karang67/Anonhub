@@ -101,10 +101,20 @@ class MoQTransportClient {
     this.audioWriter = null;
     this.peerDecoders = {};
     this.audioCtx = null;
+    this.nextAudioTime = 0;
   }
 
   async connect() {
     this.connected = true;
+
+    try {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      if (this.audioCtx.state === 'suspended') {
+        await this.audioCtx.resume();
+      }
+    } catch (e) {
+      // AudioCtx catch
+    }
 
     if (typeof WebTransport !== 'undefined') {
       try {
@@ -173,7 +183,7 @@ class MoQTransportClient {
   playAudioData(audioData) {
     try {
       if (!this.audioCtx) {
-        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       }
       if (this.audioCtx.state === 'suspended') {
         this.audioCtx.resume();
@@ -190,9 +200,15 @@ class MoQTransportClient {
       const source = this.audioCtx.createBufferSource();
       source.buffer = buffer;
       source.connect(this.audioCtx.destination);
-      source.start();
+
+      const currentTime = this.audioCtx.currentTime;
+      if (!this.nextAudioTime || this.nextAudioTime < currentTime) {
+        this.nextAudioTime = currentTime + 0.02;
+      }
+      source.start(this.nextAudioTime);
+      this.nextAudioTime += buffer.duration;
     } catch (e) {
-      // Audio catch
+      console.warn('CallRoom audio playback error:', e);
     }
   }
 
@@ -263,8 +279,10 @@ class MoQTransportClient {
             const reader = processor.readable.getReader();
             this.processAudioData(reader);
           } catch (e) {
-            // Audio processor fallback
+            this.fallbackAudioData(audioTrack);
           }
+        } else {
+          this.fallbackAudioData(audioTrack);
         }
       } catch (e) {
         console.error('AudioEncoder initialization error:', e);
@@ -306,6 +324,40 @@ class MoQTransportClient {
 
     video.onloadedmetadata = () => captureLoop();
     if (video.readyState >= 2) captureLoop();
+  }
+
+  fallbackAudioData(audioTrack) {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      const source = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+
+      processor.onaudioprocess = (e) => {
+        if (!this.connected) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        if (this.audioEncoder && this.audioEncoder.state === 'configured') {
+          try {
+            const audioData = new AudioData({
+              format: 'f32-planar',
+              sampleRate: 48000,
+              numberOfFrames: inputData.length,
+              numberOfChannels: 1,
+              timestamp: performance.now() * 1000,
+              data: inputData
+            });
+            this.audioEncoder.encode(audioData);
+            audioData.close();
+          } catch (err) {
+            // AudioData encode error
+          }
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+    } catch (e) {
+      console.warn('Audio fallback error:', e);
+    }
   }
 
   async processVideoFrames(reader) {
@@ -534,6 +586,17 @@ export default function CallRoom() {
     }
   }, []);
 
+  const handleUserJoined = useCallback(({ socketId, username: peerName }) => {
+    setPeers(prev => {
+      if (prev.find(p => p.socketId === socketId)) return prev;
+      return [...prev, { socketId, username: peerName || 'Participant' }];
+    });
+    setRoster(prev => {
+      if (prev.find(r => r.socketId === socketId)) return prev;
+      return [...prev, { socketId, username: peerName || 'Participant' }];
+    });
+  }, []);
+
   // ── Chat sidebar ─────────────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [messages, setMessages] = useState([]);
@@ -692,17 +755,7 @@ export default function CallRoom() {
     socket.on('webrtc-user-left', handleWebRTCUserLeft);
     */
 
-    socket.on('moq-user-joined', ({ socketId: sid, username: peerName }) => {
-      setPeers(prev => {
-        if (prev.find(p => p.socketId === sid)) return prev;
-        return [...prev, { socketId: sid, username: peerName || 'Participant' }];
-      });
-      setRoster(prev => {
-        if (prev.find(r => r.socketId === sid)) return prev;
-        return [...prev, { socketId: sid, username: peerName || 'Participant' }];
-      });
-    });
-
+    socket.on('moq-user-joined', handleUserJoined);
     socket.on('moq-user-left', ({ socketId: sid }) => {
       setPeers(prev => prev.filter(p => p.socketId !== sid));
       setRoster(prev => prev.filter(r => r.socketId !== sid));
@@ -728,7 +781,7 @@ export default function CallRoom() {
       endCallCleanup();
       socket.disconnect();
     };
-  }, [isAuthed, roomName, endCallCleanup, sidebarOpen, username]);
+  }, [isAuthed, roomName, endCallCleanup, sidebarOpen, username, handleUserJoined]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -767,6 +820,7 @@ export default function CallRoom() {
         username || 'Anonymous',
         socketRef.current,
         (peerId, videoFrame) => {
+          handleUserJoined({ socketId: peerId, username: 'Participant' });
           const canvas = peerCanvasRefs.current[peerId];
           if (canvas) {
             const ctx = canvas.getContext('2d');
@@ -781,6 +835,7 @@ export default function CallRoom() {
           videoFrame.close();
         },
         (peerId, audioData) => {
+          handleUserJoined({ socketId: peerId, username: 'Participant' });
           audioData.close();
         }
       );
@@ -791,7 +846,13 @@ export default function CallRoom() {
 
       client.startMediaEncoding(stream.getVideoTracks()[0], stream.getAudioTracks()[0]);
 
-      socketRef.current?.emit('moq-join-room', { projectName: roomName, username });
+      socketRef.current?.emit('moq-join-room', { projectName: roomName, username }, (response) => {
+        if (response && Array.isArray(response.existingPeers)) {
+          response.existingPeers.forEach(({ socketId, username: peerName }) => {
+            handleUserJoined({ socketId, username: peerName });
+          });
+        }
+      });
 
     } catch (err) {
       console.error('getUserMedia error:', err);
