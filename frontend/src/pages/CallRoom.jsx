@@ -39,7 +39,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff,
-  Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw, Info
+  Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw, Info,
+  Maximize2, Minimize2
 } from 'lucide-react';
 import { initSocket, getCookie, setCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
@@ -558,11 +559,16 @@ class MoQTransportClient {
 }
 
 // ─── Remote Video Tile (MoQ Canvas Rendering) ──────────────────────────────
-function RemoteVideoTile({ peer, micMutedMap, onCanvasRef }) {
+function RemoteVideoTile({ peer, micMutedMap, onCanvasRef, isMaximized, onToggleMaximize }) {
   const isMuted = micMutedMap?.[peer.socketId];
+  const containerRef = useRef(null);
 
   return (
-    <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
+    <div
+      ref={containerRef}
+      className={`callroom-video-tile remote-tile ${isMaximized ? 'maximized-tile' : ''}`}
+      style={{ position: 'relative' }}
+    >
       <canvas
         ref={onCanvasRef}
         style={{
@@ -576,6 +582,19 @@ function RemoteVideoTile({ peer, micMutedMap, onCanvasRef }) {
           display: 'block'
         }}
       />
+
+      <button
+        className="tile-maximize-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleMaximize(peer.socketId, containerRef.current);
+        }}
+        title={isMaximized ? "Minimize Screen" : "Maximize Screen"}
+      >
+        {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        <span>{isMaximized ? "Minimize" : "Maximize"}</span>
+      </button>
+
       <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
         <span className={`callroom-mic-indicator ${isMuted ? 'muted' : ''}`}>
           {isMuted ? <MicOff size={10} /> : <Mic size={10} />}
@@ -615,6 +634,24 @@ export default function CallRoom() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // ── Maximize / Minimize Tile State ─────────────────────────────────────────
+  const [maximizedTileId, setMaximizedTileId] = useState(null);
+  const localTileRef = useRef(null);
+
+  const toggleMaximizeTile = (tileId, elementRef) => {
+    if (maximizedTileId === tileId) {
+      setMaximizedTileId(null);
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } else {
+      setMaximizedTileId(tileId);
+      if (elementRef && elementRef.requestFullscreen) {
+        elementRef.requestFullscreen().catch(() => {});
+      }
+    }
+  };
 
   // ── Socket / connection ──────────────────────────────────────────────────────
   const socketRef = useRef(null);
@@ -743,6 +780,7 @@ export default function CallRoom() {
     setScreenSharing(false);
     setVideoMuted(false);
     setMicMuted(false);
+    setMaximizedTileId(null);
   }, []);
 
   // ─── Socket setup after auth ──────────────────────────────────────────────────
@@ -1360,7 +1398,10 @@ export default function CallRoom() {
             data-count={Math.min(totalTiles, 4)}
           >
             {/* Local tile */}
-            <div className={`callroom-video-tile local-tile ${screenSharing ? 'sharing-screen' : ''}`}>
+            <div
+              ref={localTileRef}
+              className={`callroom-video-tile local-tile ${screenSharing ? 'sharing-screen' : ''} ${maximizedTileId === 'local' ? 'maximized-tile' : ''}`}
+            >
               <video
                 ref={localVideoRefCallback}
                 autoPlay
@@ -1376,6 +1417,21 @@ export default function CallRoom() {
                   inset: 0,
                 }}
               />
+              {/* Maximize / Minimize button on local screen share tile */}
+              {screenSharing && (
+                <button
+                  className="tile-maximize-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMaximizeTile('local', localTileRef.current);
+                  }}
+                  title={maximizedTileId === 'local' ? "Minimize Screen" : "Maximize Screen"}
+                >
+                  {maximizedTileId === 'local' ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  <span>{maximizedTileId === 'local' ? "Minimize" : "Maximize"}</span>
+                </button>
+              )}
+
               {/* Hide camera avatar overlay when sharing screen with video disabled */}
               {videoMuted && !screenSharing && (
                 <div className="callroom-video-avatar">
@@ -1402,6 +1458,8 @@ export default function CallRoom() {
                 key={peer.socketId}
                 peer={peer}
                 micMutedMap={micMutedMap}
+                isMaximized={maximizedTileId === peer.socketId}
+                onToggleMaximize={toggleMaximizeTile}
                 onCanvasRef={(node) => {
                   if (node) peerCanvasRefs.current[peer.socketId] = node;
                 }}
@@ -1464,6 +1522,16 @@ export default function CallRoom() {
             >
               <MonitorUp size={20} />
               <span className="callroom-ctrl-btn-label">{screenSharing ? 'Stop Share' : 'Share'}</span>
+            </button>
+
+            {/* Maximize / Minimize toggle button in footer controls */}
+            <button
+              className={`callroom-ctrl-btn${maximizedTileId ? ' screen-active' : ''}`}
+              onClick={() => toggleMaximizeTile(maximizedTileId ? maximizedTileId : 'local', localTileRef.current)}
+              title={maximizedTileId ? "Minimize View" : "Maximize View"}
+            >
+              {maximizedTileId ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+              <span className="callroom-ctrl-btn-label">{maximizedTileId ? 'Minimize' : 'Maximize'}</span>
             </button>
 
             <div className="callroom-ctrl-divider" />

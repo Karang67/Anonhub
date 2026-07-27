@@ -37,7 +37,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw, Info } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw, Info, Maximize2, Minimize2 } from 'lucide-react';
 import { globalCallSession } from '../services/callSession';
 import './WebRTCCallWidget.css';
 
@@ -51,7 +51,6 @@ const RTC_CONFIG = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
     {
       urls: [
@@ -577,6 +576,24 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [micMutedMap, setMicMutedMap] = useState({});
   const [showScreenTip, setShowScreenTip] = useState(false);
 
+  // ── Maximize / Minimize Screen Tile State ────────────────────────────────
+  const [maximizedTileId, setMaximizedTileId] = useState(null);
+  const localCardRef = useRef(null);
+
+  const toggleMaximizeTile = (tileId, elementRef) => {
+    if (maximizedTileId === tileId) {
+      setMaximizedTileId(null);
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } else {
+      setMaximizedTileId(tileId);
+      if (elementRef && elementRef.requestFullscreen) {
+        elementRef.requestFullscreen().catch(() => {});
+      }
+    }
+  };
+
   const localStreamRef = useRef(globalCallSession.localStream);
   const localVideoRef = useRef(null);
   const screenStreamRef = useRef(globalCallSession.screenStream);
@@ -755,6 +772,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     setInCall(false);
     setScreenSharing(false);
     setConnectionStatus('disconnected');
+    setMaximizedTileId(null);
   };
 
   useEffect(() => {
@@ -1098,7 +1116,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
           <div className="webrtc-video-grid">
             {/* Local tile */}
-            <div className={`video-card local-view ${screenSharing ? 'sharing-screen' : ''}`}>
+            <div
+              ref={localCardRef}
+              className={`video-card local-view ${screenSharing ? 'sharing-screen' : ''} ${maximizedTileId === 'local' ? 'maximized-tile' : ''}`}
+            >
               <video
                 ref={localVideoRefCallback}
                 autoPlay
@@ -1109,6 +1130,22 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                   objectFit: screenSharing ? 'contain' : 'cover'
                 }}
               />
+
+              {/* Maximize / Minimize button on local screen share tile */}
+              {screenSharing && (
+                <button
+                  className="tile-maximize-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMaximizeTile('local', localCardRef.current);
+                  }}
+                  title={maximizedTileId === 'local' ? "Minimize Screen" : "Maximize Screen"}
+                >
+                  {maximizedTileId === 'local' ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  <span>{maximizedTileId === 'local' ? "Minimize" : "Maximize"}</span>
+                </button>
+              )}
+
               {(videoMuted && !screenSharing) && (
                 <div className="video-avatar-placeholder">
                   <div
@@ -1133,6 +1170,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                 key={peer.socketId}
                 peer={peer}
                 isMicMuted={!!micMutedMap[peer.socketId]}
+                isMaximized={maximizedTileId === peer.socketId}
+                onToggleMaximize={toggleMaximizeTile}
                 onCanvasRef={(node) => {
                   if (node) peerCanvasRefs.current[peer.socketId] = node;
                 }}
@@ -1173,6 +1212,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               <Tv size={16} />
             </button>
 
+            {/* Footer Maximize / Minimize button */}
+            <button
+              onClick={() => toggleMaximizeTile(maximizedTileId ? maximizedTileId : 'local', localCardRef.current)}
+              className={`call-tool-btn ${maximizedTileId ? 'active' : ''}`}
+              title={maximizedTileId ? "Minimize Screen" : "Maximize Screen"}
+            >
+              {maximizedTileId ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+
             <button
               onClick={endCall}
               className="call-tool-btn leave-btn"
@@ -1187,9 +1235,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   );
 }
 
-function MoQVideoCard({ peer, isMicMuted, onCanvasRef }) {
+function MoQVideoCard({ peer, isMicMuted, isMaximized, onToggleMaximize, onCanvasRef }) {
+  const cardRef = useRef(null);
+
   return (
-    <div className="video-card remote-view" style={{ position: 'relative' }}>
+    <div
+      ref={cardRef}
+      className={`video-card remote-view ${isMaximized ? 'maximized-tile' : ''}`}
+      style={{ position: 'relative' }}
+    >
       <canvas
         ref={onCanvasRef}
         className="video-element"
@@ -1202,6 +1256,19 @@ function MoQVideoCard({ peer, isMicMuted, onCanvasRef }) {
           display: 'block'
         }}
       />
+
+      <button
+        className="tile-maximize-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleMaximize(peer.socketId, cardRef.current);
+        }}
+        title={isMaximized ? "Minimize Screen" : "Maximize Screen"}
+      >
+        {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        <span>{isMaximized ? "Minimize" : "Maximize"}</span>
+      </button>
+
       <div className="participant-badge" style={{ position: 'absolute', bottom: 8, left: 8, zIndex: 3 }}>
         <span className={`webrtc-mic-icon ${isMicMuted ? 'muted' : ''}`}>
           {isMicMuted ? <MicOff size={9} /> : <Mic size={9} />}
