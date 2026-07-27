@@ -106,6 +106,7 @@ class MoQSession {
     this.audioCtx = null;
     this.nextAudioTime = 0;
     this.activeVideoLoopId = 0;
+    this.forceNextKeyframe = true;
   }
 
   async connect() {
@@ -142,6 +143,10 @@ class MoQSession {
     }
 
     return true;
+  }
+
+  requestKeyframe() {
+    this.forceNextKeyframe = true;
   }
 
   getPeerDecoders(senderId) {
@@ -263,6 +268,7 @@ class MoQSession {
     if (!this.connected || !videoTrack || typeof VideoEncoder === 'undefined') return;
 
     this.activeVideoLoopId++;
+    this.forceNextKeyframe = true;
     const currentLoopId = this.activeVideoLoopId;
 
     try {
@@ -329,8 +335,9 @@ class MoQSession {
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
             try {
               const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              // Force keyframe on first frame for instant remote display!
-              const keyFrame = frameCount === 0 || frameCount % 12 === 0;
+              const keyFrame = this.forceNextKeyframe || frameCount === 0 || frameCount % 12 === 0;
+              if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
               this.videoEncoder.encode(frame, { keyFrame });
               frame.close();
               frameCount++;
@@ -401,7 +408,9 @@ class MoQSession {
         const { value: frame, done } = await reader.read();
         if (done || !frame || loopId !== this.activeVideoLoopId) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameCount === 0 || frameCount % 12 === 0;
+          const keyFrame = this.forceNextKeyframe || frameCount === 0 || frameCount % 12 === 0;
+          if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
           this.videoEncoder.encode(frame, { keyFrame });
           frameCount++;
         }
@@ -599,6 +608,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (prev.find(p => p.socketId === socketId)) return prev;
       return [...prev, { socketId, username: peerName || 'Participant' }];
     });
+
+    if (moqSessionRef.current) {
+      moqSessionRef.current.requestKeyframe();
+    }
   }, [socket]);
 
   const startCall = async () => {
@@ -904,12 +917,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       )}
 
       {!inCall ? (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button className="call-btn-trigger" onClick={startCall}>
-            <PhoneCall size={14} /> Join Voice &amp; Video ({transportMode})
+        <div className="webrtc-join-panel" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', background: 'rgba(13, 15, 26, 0.8)', borderRadius: '12px', border: '1px solid rgba(124, 77, 255, 0.3)' }}>
+          <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+            <PhoneCall size={16} /> Join Voice &amp; Video Call ({transportMode})
           </button>
-          <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ background: '#2563eb' }}>
-            <Tv size={14} /> Share Screen
+          <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+            <Tv size={16} /> Share Laptop Screen
           </button>
         </div>
       ) : (

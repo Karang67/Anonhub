@@ -104,6 +104,7 @@ class MoQTransportClient {
     this.audioCtx = null;
     this.nextAudioTime = 0;
     this.activeVideoLoopId = 0;
+    this.forceNextKeyframe = true;
   }
 
   async connect() {
@@ -140,6 +141,10 @@ class MoQTransportClient {
     }
 
     return true;
+  }
+
+  requestKeyframe() {
+    this.forceNextKeyframe = true;
   }
 
   getPeerDecoders(senderId) {
@@ -260,6 +265,7 @@ class MoQTransportClient {
     if (!this.connected || !videoTrack || typeof VideoEncoder === 'undefined') return;
 
     this.activeVideoLoopId++;
+    this.forceNextKeyframe = true;
     const currentLoopId = this.activeVideoLoopId;
 
     try {
@@ -326,8 +332,9 @@ class MoQTransportClient {
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
             try {
               const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              // Force Keyframe on first frame for instant remote rendering!
-              const keyFrame = frameIdx === 0 || frameIdx % 12 === 0;
+              const keyFrame = this.forceNextKeyframe || frameIdx === 0 || frameIdx % 12 === 0;
+              if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
               this.videoEncoder.encode(frame, { keyFrame });
               frame.close();
               frameIdx++;
@@ -398,7 +405,9 @@ class MoQTransportClient {
         const { value: frame, done } = await reader.read();
         if (done || !frame || loopId !== this.activeVideoLoopId) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameIdx === 0 || frameIdx % 12 === 0;
+          const keyFrame = this.forceNextKeyframe || frameIdx === 0 || frameIdx % 12 === 0;
+          if (this.forceNextKeyframe) this.forceNextKeyframe = false;
+
           this.videoEncoder.encode(frame, { keyFrame });
           frameIdx++;
         }
@@ -631,6 +640,10 @@ export default function CallRoom() {
       if (prev.find(r => r.socketId === socketId)) return prev;
       return [...prev, { socketId, username: peerName || 'Participant' }];
     });
+
+    if (moqClientRef.current) {
+      moqClientRef.current.requestKeyframe();
+    }
   }, []);
 
   // ── Chat sidebar ─────────────────────────────────────────────────────────────
@@ -1130,7 +1143,7 @@ export default function CallRoom() {
               <Video size={36} color="rgba(124, 77, 255, 0.7)" />
             </div>
             <h3>Ready to join the MoQ call?</h3>
-            <p>Click below to join or share your desktop screen directly.</p>
+            <p>Click below to join or share your laptop screen directly.</p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
               <button
                 id="callroom-start-btn"
@@ -1173,7 +1186,7 @@ export default function CallRoom() {
                   transition: 'all 0.2s',
                 }}
               >
-                <MonitorUp size={18} /> Share Screen
+                <MonitorUp size={18} /> Share Laptop Screen
               </button>
             </div>
           </div>
@@ -1243,7 +1256,7 @@ export default function CallRoom() {
             </button>
             <button className="callroom-ctrl-btn" onClick={toggleScreenShare} title="Share Screen" style={{ background: '#2563eb' }}>
               <MonitorUp size={20} />
-              <span className="callroom-ctrl-btn-label">Share</span>
+              <span className="callroom-ctrl-btn-label">Share Screen</span>
             </button>
           </div>
         ) : (
