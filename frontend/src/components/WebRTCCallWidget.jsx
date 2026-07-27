@@ -51,6 +51,7 @@ const RTC_CONFIG = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
     {
       urls: [
@@ -316,7 +317,7 @@ class MoQSession {
     const video = document.createElement('video');
     video.srcObject = new MediaStream([videoTrack]);
     video.muted = true;
-    video.play().catch(() => {});
+    video.play().catch(() => { });
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -576,7 +577,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [micMutedMap, setMicMutedMap] = useState({});
   const [showScreenTip, setShowScreenTip] = useState(false);
 
-  // ── Maximize / Minimize Screen Tile State ────────────────────────────────
+  // ── Maximize / Minimize Screen Tile State for Mobile View ──────────────────
   const [maximizedTileId, setMaximizedTileId] = useState(null);
   const localCardRef = useRef(null);
 
@@ -1026,7 +1027,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const replaceVideoTrack = (newTrack) => {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = new MediaStream([newTrack]);
-      localVideoRef.current.play().catch(() => {});
+      localVideoRef.current.play().catch(() => { });
     }
   };
 
@@ -1130,7 +1131,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                   objectFit: screenSharing ? 'contain' : 'cover'
                 }}
               />
-
               {/* Maximize / Minimize button on local screen share tile */}
               {screenSharing && (
                 <button
@@ -1212,7 +1212,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               <Tv size={16} />
             </button>
 
-            {/* Footer Maximize / Minimize button */}
+            {/* Maximize / Minimize button on control bar */}
             <button
               onClick={() => toggleMaximizeTile(maximizedTileId ? maximizedTileId : 'local', localCardRef.current)}
               className={`call-tool-btn ${maximizedTileId ? 'active' : ''}`}
@@ -1257,6 +1257,7 @@ function MoQVideoCard({ peer, isMicMuted, isMaximized, onToggleMaximize, onCanva
         }}
       />
 
+      {/* Prominent Maximize/Minimize button for Mobile & Desktop users to view remote shared screen */}
       <button
         className="tile-maximize-btn"
         onClick={(e) => {
