@@ -37,7 +37,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw } from 'lucide-react';
+import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw, Info } from 'lucide-react';
 import { globalCallSession } from '../services/callSession';
 import './WebRTCCallWidget.css';
 
@@ -105,6 +105,7 @@ class MoQSession {
     this.peerDecoders = {};
     this.audioCtx = null;
     this.nextAudioTime = 0;
+    this.activeVideoLoopId = 0;
   }
 
   async connect() {
@@ -230,47 +231,8 @@ class MoQSession {
       }
     }
 
-    // Configure VideoEncoder (VP8 Real-Time Low Latency Mode)
-    if (videoTrack && typeof VideoEncoder !== 'undefined') {
-      try {
-        const settings = videoTrack.getSettings();
-        if (this.videoEncoder) {
-          try { this.videoEncoder.close(); } catch (e) { }
-        }
-
-        this.videoEncoder = new VideoEncoder({
-          output: (chunk, metadata) => this.handleEncodedVideoChunk(chunk, metadata),
-          error: (e) => console.error('VideoEncoder error:', e)
-        });
-
-        const isScreenShare = videoTrack.label && videoTrack.label.toLowerCase().includes('screen');
-        const targetWidth = isScreenShare ? (settings.width || 1280) : (settings.width || 640);
-        const targetHeight = isScreenShare ? (settings.height || 720) : (settings.height || 480);
-        const targetBitrate = isScreenShare ? 800000 : 400000;
-
-        this.videoEncoder.configure({
-          codec: 'vp8',
-          width: targetWidth,
-          height: targetHeight,
-          bitrate: targetBitrate,
-          framerate: settings.frameRate || 24,
-          latencyMode: 'realtime'
-        });
-
-        if (typeof MediaStreamTrackProcessor !== 'undefined') {
-          try {
-            const processor = new MediaStreamTrackProcessor({ track: videoTrack });
-            const reader = processor.readable.getReader();
-            this.readVideoFrames(reader);
-          } catch (e) {
-            this.fallbackVideoFrames(videoTrack);
-          }
-        } else {
-          this.fallbackVideoFrames(videoTrack);
-        }
-      } catch (err) {
-        console.error('WebCodecs VideoEncoder setup error:', err);
-      }
+    if (videoTrack) {
+      this.switchVideoTrack(videoTrack);
     }
 
     // Configure AudioEncoder (Opus Real-Time 20ms)
@@ -297,7 +259,54 @@ class MoQSession {
     }
   }
 
-  fallbackVideoFrames(videoTrack) {
+  switchVideoTrack(videoTrack) {
+    if (!this.connected || !videoTrack || typeof VideoEncoder === 'undefined') return;
+
+    this.activeVideoLoopId++;
+    const currentLoopId = this.activeVideoLoopId;
+
+    try {
+      const settings = videoTrack.getSettings();
+      if (this.videoEncoder) {
+        try { this.videoEncoder.close(); } catch (e) { }
+      }
+
+      this.videoEncoder = new VideoEncoder({
+        output: (chunk, metadata) => this.handleEncodedVideoChunk(chunk, metadata),
+        error: (e) => console.error('VideoEncoder error:', e)
+      });
+
+      const isScreenShare = videoTrack.label && videoTrack.label.toLowerCase().includes('screen');
+      const targetWidth = isScreenShare ? (settings.width || 1280) : (settings.width || 640);
+      const targetHeight = isScreenShare ? (settings.height || 720) : (settings.height || 480);
+      const targetBitrate = isScreenShare ? 800000 : 400000;
+
+      this.videoEncoder.configure({
+        codec: 'vp8',
+        width: targetWidth,
+        height: targetHeight,
+        bitrate: targetBitrate,
+        framerate: settings.frameRate || 24,
+        latencyMode: 'realtime'
+      });
+
+      if (typeof MediaStreamTrackProcessor !== 'undefined') {
+        try {
+          const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+          const reader = processor.readable.getReader();
+          this.readVideoFrames(reader, currentLoopId);
+        } catch (e) {
+          this.fallbackVideoFrames(videoTrack, currentLoopId);
+        }
+      } else {
+        this.fallbackVideoFrames(videoTrack, currentLoopId);
+      }
+    } catch (err) {
+      console.error('WebCodecs VideoEncoder switch error:', err);
+    }
+  }
+
+  fallbackVideoFrames(videoTrack, loopId) {
     const video = document.createElement('video');
     video.srcObject = new MediaStream([videoTrack]);
     video.muted = true;
@@ -309,8 +318,8 @@ class MoQSession {
     let lastTime = 0;
 
     const captureLoop = (now) => {
-      if (!this.connected) return;
-      if (now - lastTime >= 40) { // 25 FPS smooth streaming
+      if (!this.connected || (loopId && loopId !== this.activeVideoLoopId)) return;
+      if (now - lastTime >= 35) {
         lastTime = now;
         if (video.readyState >= 2) {
           canvas.width = video.videoWidth || 640;
@@ -320,7 +329,8 @@ class MoQSession {
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
             try {
               const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
-              const keyFrame = frameCount % 12 === 0;
+              // Force keyframe on first frame for instant remote display!
+              const keyFrame = frameCount === 0 || frameCount % 12 === 0;
               this.videoEncoder.encode(frame, { keyFrame });
               frame.close();
               frameCount++;
@@ -354,7 +364,6 @@ class MoQSession {
         temp.set(inputData, bufferPool.length);
         bufferPool = temp;
 
-        // Process exact 960-sample Opus frames (20ms at 48kHz)
         while (bufferPool.length >= 960) {
           const chunk = bufferPool.slice(0, 960);
           bufferPool = bufferPool.slice(960);
@@ -385,14 +394,14 @@ class MoQSession {
     }
   }
 
-  async readVideoFrames(reader) {
+  async readVideoFrames(reader, loopId) {
     let frameCount = 0;
-    while (this.connected) {
+    while (this.connected && loopId === this.activeVideoLoopId) {
       try {
         const { value: frame, done } = await reader.read();
-        if (done || !frame) break;
+        if (done || !frame || loopId !== this.activeVideoLoopId) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameCount % 12 === 0;
+          const keyFrame = frameCount === 0 || frameCount % 12 === 0;
           this.videoEncoder.encode(frame, { keyFrame });
           frameCount++;
         }
@@ -557,6 +566,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   );
   const [transportMode, setTransportMode] = useState('MoQ');
   const [micMutedMap, setMicMutedMap] = useState({});
+  const [showScreenTip, setShowScreenTip] = useState(false);
 
   const localStreamRef = useRef(globalCallSession.localStream);
   const localVideoRef = useRef(null);
@@ -783,8 +793,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       replaceVideoTrack(newVideoTrack);
 
       if (moqSessionRef.current) {
-        const audioTrack = localStreamRef.current.getAudioTracks()[0];
-        moqSessionRef.current.initEncoders(newVideoTrack, audioTrack);
+        moqSessionRef.current.switchVideoTrack(newVideoTrack);
       }
     } catch (err) {
       console.error('Camera switch error:', err);
@@ -804,8 +813,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         screenStreamRef.current = null;
       }
       setScreenSharing(false);
+      setShowScreenTip(false);
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
-      if (camTrack) replaceVideoTrack(camTrack);
+      if (camTrack) {
+        replaceVideoTrack(camTrack);
+        if (moqSessionRef.current) moqSessionRef.current.switchVideoTrack(camTrack);
+      }
     } else {
       try {
         let stream;
@@ -822,20 +835,24 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         globalCallSession.screenStream = stream;
         globalCallSession.screenSharing = true;
         setScreenSharing(true);
+        setShowScreenTip(true);
 
         const screenTrack = stream.getVideoTracks()[0];
         replaceVideoTrack(screenTrack);
 
         if (moqSessionRef.current) {
-          const aTrack = localStreamRef.current?.getAudioTracks()[0];
-          moqSessionRef.current.initEncoders(screenTrack, aTrack);
+          moqSessionRef.current.switchVideoTrack(screenTrack);
         }
 
         screenTrack.onended = () => {
           globalCallSession.stopScreenShare();
           setScreenSharing(false);
+          setShowScreenTip(false);
           const camTrack = localStreamRef.current?.getVideoTracks()[0];
-          if (camTrack) replaceVideoTrack(camTrack);
+          if (camTrack) {
+            replaceVideoTrack(camTrack);
+            if (moqSessionRef.current) moqSessionRef.current.switchVideoTrack(camTrack);
+          }
         };
       } catch (err) {
         console.error('Screen sharing error:', err);
@@ -865,6 +882,24 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       {isReconnecting && (
         <div className="reconnecting-banner">
           <span>🔄 Reconnecting...</span>
+        </div>
+      )}
+
+      {showScreenTip && screenSharing && (
+        <div style={{
+          padding: '8px 14px',
+          margin: '8px 0',
+          borderRadius: '8px',
+          background: 'rgba(255, 171, 0, 0.15)',
+          border: '1px solid rgba(255, 171, 0, 0.4)',
+          color: '#ffc107',
+          fontSize: '0.78rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <Info size={14} />
+          <span><strong>Tip:</strong> Share a different window or desktop app to avoid the hall-of-mirrors preview loop!</span>
         </div>
       )}
 
