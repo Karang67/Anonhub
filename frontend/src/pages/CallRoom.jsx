@@ -597,6 +597,25 @@ export default function CallRoom() {
   const [authError, setAuthError] = useState('');
   const [username, setUsername] = useState('');
 
+  // ── Auto-hiding Navbar on Scroll Down ───────────────────────────────────────
+  const [navVisible, setNavVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY || document.documentElement.scrollTop;
+      if (currentScrollY > lastScrollY.current && currentScrollY > 40) {
+        setNavVisible(false);
+      } else {
+        setNavVisible(true);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   // ── Socket / connection ──────────────────────────────────────────────────────
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
@@ -813,6 +832,23 @@ export default function CallRoom() {
     if (sidebarOpen) setUnreadCount(0);
   }, [sidebarOpen]);
 
+  // ─── Pre-Join Toggle Handlers ────────────────────────────────────────────────
+  const toggleMicPrejoin = () => {
+    if (inCall && localStreamRef.current) {
+      toggleMic();
+    } else {
+      setMicMuted(prev => !prev);
+    }
+  };
+
+  const toggleVideoPrejoin = () => {
+    if (inCall && localStreamRef.current) {
+      toggleVideo();
+    } else {
+      setVideoMuted(prev => !prev);
+    }
+  };
+
   // ─── Start Call ──────────────────────────────────────────────────────────────
   const startCall = async () => {
     try {
@@ -838,8 +874,15 @@ export default function CallRoom() {
       }
 
       localStreamRef.current = stream;
-      setVideoMuted(false);
-      setMicMuted(false);
+
+      // Apply pre-join mic and video preferences
+      if (stream.getAudioTracks()[0]) {
+        stream.getAudioTracks()[0].enabled = !micMuted;
+      }
+      if (stream.getVideoTracks()[0]) {
+        stream.getVideoTracks()[0].enabled = !videoMuted;
+      }
+
       setFacingMode('user');
 
       requestAnimationFrame(() => {
@@ -1049,7 +1092,12 @@ export default function CallRoom() {
 
         const micStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
         const audioTrack = micStream ? micStream.getAudioTracks()[0] : null;
-        if (micStream) localStreamRef.current = micStream;
+        if (micStream) {
+          localStreamRef.current = micStream;
+          if (micMuted && micStream.getAudioTracks()[0]) {
+            micStream.getAudioTracks()[0].enabled = false;
+          }
+        }
 
         client.startMediaEncoding(screenTrack, audioTrack);
         replaceVideoTrack(screenTrack);
@@ -1173,8 +1221,8 @@ export default function CallRoom() {
 
   return (
     <div className={`callroom-root${!sidebarOpen ? ' no-sidebar' : ''}`}>
-      {/* Header */}
-      <header className="callroom-header">
+      {/* Auto-Hiding Header on Scroll Down */}
+      <header className={`callroom-header${!navVisible ? ' nav-hidden' : ''}`}>
         <div className="callroom-header-left">
           <button
             onClick={() => {
@@ -1236,17 +1284,37 @@ export default function CallRoom() {
           </div>
         )}
 
-        {/* ALWAYS VISIBLE TOP ACTION BAR */}
+        {/* PRE-JOIN CONTROLS & ALWAYS VISIBLE TOP ACTION BAR */}
         <div className="callroom-top-action-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 16px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', margin: '8px 16px', border: '1px solid rgba(124, 77, 255, 0.3)', zIndex: 10 }}>
           {!inCall ? (
-            <>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', width: '100%', justifyContent: 'center' }}>
+              {/* Pre-Join Mic & Camera Toggles */}
+              <button
+                onClick={toggleMicPrejoin}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: micMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: micMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${micMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
+                title={micMuted ? 'Unmute Mic' : 'Mute Mic'}
+              >
+                {micMuted ? <MicOff size={15} /> : <Mic size={15} />}
+                {micMuted ? 'Mic Muted' : 'Mic On'}
+              </button>
+
+              <button
+                onClick={toggleVideoPrejoin}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: videoMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: videoMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${videoMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
+                title={videoMuted ? 'Turn Camera On' : 'Turn Camera Off'}
+              >
+                {videoMuted ? <VideoOff size={15} /> : <Video size={15} />}
+                {videoMuted ? 'Camera Off' : 'Camera On'}
+              </button>
+
               <button id="callroom-start-btn" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
                 <Video size={16} /> Join Video Call
               </button>
+
               <button onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
                 <MonitorUp size={16} /> Screen Share Only
               </button>
-            </>
+            </div>
           ) : (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.82rem', color: '#a78bfa', fontWeight: 600 }}>Active Call Session (#{roomName})</span>
@@ -1268,7 +1336,7 @@ export default function CallRoom() {
               <Video size={36} color="rgba(124, 77, 255, 0.7)" />
             </div>
             <h3>Ready to join the MoQ call?</h3>
-            <p>Click below to join or share your laptop screen directly.</p>
+            <p>Set your mic/camera preferences above, then join or share screen directly.</p>
           </div>
         ) : (
           <div
@@ -1285,14 +1353,15 @@ export default function CallRoom() {
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
-                  display: videoMuted ? 'none' : 'block',
+                  objectFit: screenSharing ? 'contain' : 'cover',
+                  display: (videoMuted && !screenSharing) ? 'none' : 'block',
                   background: '#0d0f1a',
                   position: 'absolute',
                   inset: 0,
                 }}
               />
-              {videoMuted && (
+              {/* Hide camera avatar overlay when sharing screen with video disabled */}
+              {videoMuted && !screenSharing && (
                 <div className="callroom-video-avatar">
                   <div className="callroom-avatar-circle">{getInitials(username)}</div>
                   <div className="callroom-avatar-name">{username} (You)</div>

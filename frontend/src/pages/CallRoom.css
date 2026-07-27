@@ -28,7 +28,7 @@
   grid-template-columns: 1fr;
 }
 
-/* ─── Header ─────────────────────────────────────────────────────────────────── */
+/* ─── Header (Auto-Hiding on Scroll Down) ─────────────────────────────────── */
 .callroom-header {
   grid-area: header;
   display: flex;
@@ -39,6 +39,13 @@
   border-bottom: 1px solid rgba(124, 77, 255, 0.15);
   backdrop-filter: blur(12px);
   z-index: 10;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.callroom-header.nav-hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .callroom-header-left {

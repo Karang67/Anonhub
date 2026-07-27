@@ -614,6 +614,22 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     }
   }, [socket]);
 
+  const toggleMicPrejoin = () => {
+    if (inCall && localStreamRef.current) {
+      toggleMic();
+    } else {
+      setMicMuted(prev => !prev);
+    }
+  };
+
+  const toggleVideoPrejoin = () => {
+    if (inCall && localStreamRef.current) {
+      toggleVideo();
+    } else {
+      setVideoMuted(prev => !prev);
+    }
+  };
+
   const startCall = async () => {
     try {
       setInCall(true);
@@ -639,8 +655,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       }
 
       localStreamRef.current = stream;
-      setVideoMuted(false);
-      setMicMuted(false);
+
+      // Respect pre-join preferences
+      if (stream.getAudioTracks()[0]) {
+        stream.getAudioTracks()[0].enabled = !micMuted;
+      }
+      if (stream.getVideoTracks()[0]) {
+        stream.getVideoTracks()[0].enabled = !videoMuted;
+      }
+
       setFacingMode('user');
       setConnectionStatus('connected');
 
@@ -885,7 +908,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
         const micStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
         const audioTrack = micStream ? micStream.getAudioTracks()[0] : null;
-        if (micStream) localStreamRef.current = micStream;
+        if (micStream) {
+          localStreamRef.current = micStream;
+          if (micMuted && micStream.getAudioTracks()[0]) {
+            micStream.getAudioTracks()[0].enabled = false;
+          }
+        }
 
         session.initEncoders(screenTrack, audioTrack);
         replaceVideoTrack(screenTrack);
@@ -1017,17 +1045,35 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         </div>
       )}
 
-      {/* ALWAYS VISIBLE ACTION BAR */}
+      {/* ALWAYS VISIBLE ACTION BAR WITH PRE-JOIN CONTROLS */}
       <div className="webrtc-action-header-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(124, 77, 255, 0.3)' }}>
         {!inCall ? (
-          <>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', width: '100%', justifyContent: 'center' }}>
+            <button
+              onClick={toggleMicPrejoin}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: micMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: micMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${micMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
+              title={micMuted ? 'Unmute Mic' : 'Mute Mic'}
+            >
+              {micMuted ? <MicOff size={15} /> : <Mic size={15} />}
+              {micMuted ? 'Mic Muted' : 'Mic On'}
+            </button>
+
+            <button
+              onClick={toggleVideoPrejoin}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: videoMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: videoMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${videoMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
+              title={videoMuted ? 'Turn Camera On' : 'Turn Camera Off'}
+            >
+              {videoMuted ? <VideoOff size={15} /> : <Video size={15} />}
+              {videoMuted ? 'Camera Off' : 'Camera On'}
+            </button>
+
             <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
               <PhoneCall size={15} /> Join Video Call
             </button>
             <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
               <Tv size={15} /> Screen Share Only
             </button>
-          </>
+          </div>
         ) : (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '0.8rem', color: '#a78bfa', fontWeight: 600 }}>Active MoQ Session (#{projectName})</span>
@@ -1058,9 +1104,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                 autoPlay
                 playsInline
                 muted
-                className={`video-element ${videoMuted ? 'muted' : ''}`}
+                className={`video-element ${(videoMuted && !screenSharing) ? 'muted' : ''}`}
+                style={{
+                  objectFit: screenSharing ? 'contain' : 'cover'
+                }}
               />
-              {videoMuted && (
+              {(videoMuted && !screenSharing) && (
                 <div className="video-avatar-placeholder">
                   <div
                     className="video-initials-circle"
