@@ -347,7 +347,6 @@ class MoQTransportClient {
       }
     };
 
-    // Use setInterval so screen capture continues even when working outside the app window!
     const timerId = setInterval(captureStep, 35);
   }
 
@@ -569,8 +568,8 @@ function RemoteVideoTile({ peer, micMutedMap, onCanvasRef }) {
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
-          background: '#0d0f1a',
+          objectFit: 'contain',
+          background: '#000000',
           position: 'absolute',
           inset: 0,
           zIndex: 1,
@@ -647,8 +646,8 @@ export default function CallRoom() {
     }
   }, []);
 
-  // ── Chat sidebar ─────────────────────────────────────────────────────────────
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // ── Chat sidebar (default closed on mobile screens) ─────────────────────────
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
@@ -1237,7 +1236,7 @@ export default function CallRoom() {
           </div>
         )}
 
-        {/* ALWAYS VISIBLE TOP BAR */}
+        {/* ALWAYS VISIBLE TOP ACTION BAR */}
         <div className="callroom-top-action-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 16px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', margin: '8px 16px', border: '1px solid rgba(124, 77, 255, 0.3)', zIndex: 10 }}>
           {!inCall ? (
             <>
@@ -1245,7 +1244,7 @@ export default function CallRoom() {
                 <Video size={16} /> Join Video Call
               </button>
               <button onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
-                <MonitorUp size={16} /> Share Laptop Screen
+                <MonitorUp size={16} /> Screen Share Only
               </button>
             </>
           ) : (
@@ -1420,9 +1419,9 @@ export default function CallRoom() {
             <button
               className="callroom-sidebar-close-btn"
               onClick={() => setSidebarOpen(false)}
-              title="Close Sidebar"
+              title="Close Chat"
             >
-              <X size={14} />
+              <X size={20} />
             </button>
           </div>
 

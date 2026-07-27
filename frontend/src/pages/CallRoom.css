@@ -413,11 +413,27 @@
   text-transform: uppercase;
 }
 
+/* Prominent, high-contrast close/cut button for mobile touch targets */
 .callroom-sidebar-close-btn {
-  background: transparent;
-  border: none;
-  color: rgba(200, 180, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
   cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.callroom-sidebar-close-btn:hover,
+.callroom-sidebar-close-btn:active {
+  background: #ef4444;
+  color: #ffffff;
+  transform: scale(1.05);
 }
 
 .callroom-roster {
@@ -613,11 +629,29 @@
     border-radius: 10px;
   }
 
+  /* Full-screen chat overlay on mobile with large 44px close tap target */
   .callroom-sidebar {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 200;
+    z-index: 999;
+    background: #080910;
+  }
+
+  .callroom-sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid rgba(124, 77, 255, 0.2);
+  }
+
+  .callroom-sidebar-close-btn {
+    width: 44px;
+    height: 44px;
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #ef4444;
   }
 }
