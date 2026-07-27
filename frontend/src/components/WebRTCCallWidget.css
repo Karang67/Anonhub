@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--primary-gradient, linear-gradient(135deg, #10b981 0%, #059669 100%));
+  background: var(--primary-gradient, linear-gradient(135deg, #7c4dff 0%, #5c35cc 100%));
   color: white;
   border: none;
   padding: 8px 16px;
@@ -25,13 +25,13 @@
   font-weight: 700;
   font-size: 0.82rem;
   cursor: pointer;
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 4px 10px rgba(124, 77, 255, 0.2);
   transition: all 0.2s ease;
 }
 
 .call-btn-trigger:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 6px 14px rgba(124, 77, 255, 0.3);
 }
 
 .webrtc-call-workspace {
@@ -68,18 +68,18 @@
 /* ── Video grid ────────────────────────────────────────────────────────────── */
 .webrtc-video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
-  min-height: 110px;
+  min-height: 140px;
 }
 
 .video-card {
   position: relative;
-  background: #0d1117;
+  background: #000000;
   border-radius: 8px;
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   overflow: hidden;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -90,14 +90,19 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.video-element {
+/* Force object-fit: contain so 100% of screen shares are completely visible! */
+.video-element,
+.video-card video,
+.video-card canvas {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain !important;
+  background: #000000 !important;
 }
 
 .video-card.local-view:not(.sharing-screen) video {
   transform: scaleX(-1);
+  object-fit: cover !important;
 }
 
 .video-element.muted {
@@ -134,11 +139,11 @@
   position: absolute;
   bottom: 6px;
   left: 6px;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
-  padding: 2px 7px 2px 5px;
+  padding: 3px 8px;
   border-radius: 12px;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: white;
   font-weight: 600;
   pointer-events: none;
@@ -152,7 +157,6 @@
   gap: 4px;
 }
 
-/* ── Mic status icon inside badge ─────────────────────────────────────────── */
 .webrtc-mic-icon {
   display: inline-flex;
   align-items: center;
@@ -169,7 +173,7 @@
   display: flex;
   justify-content: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.2);
   padding: 6px;
   border-radius: 8px;
 }
@@ -178,8 +182,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
@@ -260,21 +264,24 @@
   50% { opacity: 1; }
 }
 
+/* ── Mobile responsiveness ───────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .webrtc-action-header-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 
-.call-btn-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--primary-gradient, linear-gradient(135deg, #10b981 0%, #059669 100%));
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.82rem;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
-  transition: all 0.2s ease;
+  .webrtc-action-header-bar button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .webrtc-video-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .webrtc-controls-bar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
-

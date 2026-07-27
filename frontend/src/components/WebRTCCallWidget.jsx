@@ -350,7 +350,6 @@ class MoQSession {
       }
     };
 
-    // Use setInterval so video encoding continues even when working outside the browser window!
     const timerId = setInterval(captureStep, 35);
   }
 
@@ -1018,15 +1017,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         </div>
       )}
 
-      {/* ALWAYS VISIBLE ACTION BAR FOR ACCESSIBILITY */}
+      {/* ALWAYS VISIBLE ACTION BAR */}
       <div className="webrtc-action-header-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(124, 77, 255, 0.3)' }}>
         {!inCall ? (
           <>
             <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <PhoneCall size={15} /> Join Video &amp; Voice Call
+              <PhoneCall size={15} /> Join Video Call
             </button>
             <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <Tv size={15} /> Share Laptop Screen
+              <Tv size={15} /> Screen Share Only
             </button>
           </>
         ) : (
@@ -1148,9 +1147,9 @@ function MoQVideoCard({ peer, isMicMuted, onCanvasRef }) {
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
+          objectFit: 'contain',
           zIndex: 1,
-          background: '#0d0f1a',
+          background: '#000000',
           display: 'block'
         }}
       />

@@ -1,47 +1,44 @@
 /**
- * @file CallRoom.css
- * @description Dedicated Video Call & Screen Share Room styles.
- * Midnight glassmorphism design with cyberpunk accent glows.
- * Layout: Fixed full-viewport, no scroll — header bar, video mesh grid, sidebar chat.
+ * CallRoom.css - Mobile-Responsive MoQ Call Room Design
  */
 
-/* ─── Root Container ──────────────────────────────────────────────────────────── */
 .callroom-root {
   display: grid;
-  grid-template-rows: 56px 1fr 72px;
-  grid-template-columns: 1fr 300px;
   grid-template-areas:
-    "header  header"
-    "grid    sidebar"
-    "controls controls";
-  height: 100vh;
+    "header header"
+    "grid   sidebar"
+    "ctrl   sidebar";
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 56px 1fr 72px;
   width: 100vw;
-  background: #08090e;
-  color: #e8eaf6;
-  font-family: 'Inter', system-ui, sans-serif;
+  height: 100vh;
+  background: #04050a;
+  color: #e2e8f0;
+  font-family: var(--font-main, 'Outfit', 'Inter', system-ui, sans-serif);
   overflow: hidden;
-  position: fixed;
-  /* place the callroom below the global Navbar to avoid content being hidden
-     Navbar uses a sticky header with a top offset and margins; to be safe we
-     offset the callroom by header height + extra spacing (28px). */
-  top: calc(var(--header-height, 64px) + 28px);
-  left: 0;
-  /* reduce height accordingly so callroom fills remaining viewport */
-  height: calc(100vh - (var(--header-height, 64px) + 28px));
-  z-index: 900;
+  position: relative;
+  transition: grid-template-columns 0.3s ease;
 }
 
-/* ─── Header Bar ─────────────────────────────────────────────────────────────── */
+.callroom-root.no-sidebar {
+  grid-template-areas:
+    "header"
+    "grid"
+    "ctrl";
+  grid-template-columns: 1fr;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
 .callroom-header {
   grid-area: header;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: rgba(12, 14, 22, 0.95);
-  border-bottom: 1px solid rgba(124, 77, 255, 0.2);
-  backdrop-filter: blur(20px);
-  z-index: 20;
+  background: rgba(8, 9, 14, 0.95);
+  border-bottom: 1px solid rgba(124, 77, 255, 0.15);
+  backdrop-filter: blur(12px);
+  z-index: 10;
 }
 
 .callroom-header-left {
@@ -51,24 +48,22 @@
 }
 
 .callroom-home-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e8eaf6;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  color: #c5b3ff;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .callroom-home-btn:hover {
-  background: rgba(124, 77, 255, 0.2);
-  border-color: rgba(124, 77, 255, 0.4);
-  color: #c5b3ff;
-  box-shadow: 0 0 10px rgba(124, 77, 255, 0.25);
+  background: rgba(124, 77, 255, 0.3);
+  color: #ffffff;
   transform: translateY(-1px);
 }
 
@@ -150,12 +145,17 @@
 .callroom-grid {
   grid-area: grid;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 12px;
   overflow: hidden;
-  background: #08090e;
+  background: #04050a;
   position: relative;
+}
+
+.callroom-top-action-bar {
+  transition: all 0.3s ease;
 }
 
 .callroom-video-mesh {
@@ -166,7 +166,6 @@
   transition: grid-template-columns 0.4s ease;
 }
 
-/* Dynamic grid layout based on participant count */
 .callroom-video-mesh[data-count="1"] {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
@@ -184,20 +183,18 @@
   grid-template-rows: 1fr 1fr;
 }
 
-/* 5+ participants */
 .callroom-video-mesh.many-participants {
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 /* ─── Video Tile ─────────────────────────────────────────────────────────────── */
 .callroom-video-tile {
   position: relative;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
-  background: #0d0f1a;
+  background: #000000;
   border: 1px solid rgba(124, 77, 255, 0.15);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
   transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
   display: flex;
   align-items: center;
@@ -206,33 +203,28 @@
 
 .callroom-video-tile:hover {
   border-color: rgba(124, 77, 255, 0.4);
-  box-shadow: 0 4px 32px rgba(124, 77, 255, 0.15), 0 4px 24px rgba(0, 0, 0, 0.5);
-  transform: scale(1.01);
 }
 
 .callroom-video-tile.local-tile {
   border-color: rgba(124, 77, 255, 0.35);
-  box-shadow: 0 0 20px rgba(124, 77, 255, 0.15), 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 .callroom-video-tile.local-tile:not(.sharing-screen) video {
   transform: scaleX(-1);
+  object-fit: cover !important;
 }
 
-.callroom-video-tile.speaking {
-  border-color: rgba(100, 220, 100, 0.6);
-  box-shadow: 0 0 20px rgba(100, 220, 100, 0.2), 0 4px 24px rgba(0, 0, 0, 0.5);
-}
-
-.callroom-video-tile video {
+/* CRITICAL: object-fit: contain preserves 100% of shared laptop screen without cropping! */
+.callroom-video-tile video,
+.callroom-video-tile canvas {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain !important;
   display: block;
-  background: #0d0f1a;
+  background: #000000 !important;
 }
 
-/* ─── Video Avatar (when cam is off) ─────────────────────────────────────────── */
+/* ─── Video Avatar ─────────────────────────────────────────────────────────── */
 .callroom-video-avatar {
   position: absolute;
   inset: 0;
@@ -245,14 +237,14 @@
 }
 
 .callroom-avatar-circle {
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   background: linear-gradient(135deg, #7c4dff, #5c35cc);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   font-weight: 700;
   color: #fff;
   box-shadow: 0 0 20px rgba(124, 77, 255, 0.4);
@@ -260,331 +252,220 @@
 }
 
 .callroom-avatar-name {
-  font-size: 0.8rem;
-  color: rgba(200, 180, 255, 0.6);
+  font-size: 0.85rem;
+  color: rgba(200, 180, 255, 0.7);
   font-weight: 500;
 }
 
-/* ─── Participant Badge ───────────────────────────────────────────────────────── */
-.callroom-participant-badge {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(8, 9, 14, 0.8);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(124, 77, 255, 0.2);
-  border-radius: 20px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  color: #c5b3ff;
-  font-weight: 600;
-  max-width: calc(100% - 20px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.callroom-mic-indicator {
-  display: flex;
-  align-items: center;
-}
-
-.callroom-mic-indicator.muted {
-  color: #ff4444;
-}
-
-/* ─── Waiting / Empty Room Overlay ───────────────────────────────────────────── */
-.callroom-waiting-overlay {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  color: rgba(197, 179, 255, 0.5);
-  height: 100%;
-}
-
-.callroom-waiting-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: rgba(124, 77, 255, 0.08);
-  border: 2px solid rgba(124, 77, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: float-icon 3s ease-in-out infinite;
-}
-
-@keyframes float-icon {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-12px); }
-}
-
-.callroom-waiting-overlay h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: rgba(197, 179, 255, 0.7);
-  margin: 0;
-}
-
-.callroom-waiting-overlay p {
-  font-size: 0.8rem;
-  color: rgba(197, 179, 255, 0.35);
-  margin: 0;
-  text-align: center;
-}
-
-/* ─── Screen Share Indicator ─────────────────────────────────────────────────── */
 .callroom-screen-share-badge {
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(255, 200, 0, 0.15);
-  border: 1px solid rgba(255, 200, 0, 0.4);
-  border-radius: 20px;
-  padding: 3px 10px;
-  font-size: 0.7rem;
-  color: #ffd700;
+  background: rgba(37, 99, 235, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  color: #fff;
   display: flex;
   align-items: center;
   gap: 5px;
+  z-index: 3;
 }
 
-/* ─── Controls Bar ────────────────────────────────────────────────────────────── */
+.callroom-participant-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 3;
+}
+
+.callroom-mic-indicator {
+  display: inline-flex;
+  align-items: center;
+  color: #10b981;
+}
+
+.callroom-mic-indicator.muted {
+  color: #ef4444;
+}
+
+/* ─── Controls Footer ────────────────────────────────────────────────────────── */
 .callroom-controls {
-  grid-area: controls;
+  grid-area: ctrl;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 0 24px;
-  background: rgba(12, 14, 22, 0.95);
+  background: rgba(8, 9, 14, 0.95);
   border-top: 1px solid rgba(124, 77, 255, 0.15);
-  backdrop-filter: blur(20px);
+  padding: 0 16px;
+  z-index: 10;
 }
 
 .callroom-ctrl-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  border: 1px solid rgba(124, 77, 255, 0.25);
-  background: rgba(124, 77, 255, 0.08);
+  gap: 4px;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(124, 77, 255, 0.1);
+  border: 1px solid rgba(124, 77, 255, 0.2);
   color: #c5b3ff;
   cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
   transition: all 0.2s ease;
-  position: relative;
-  flex-shrink: 0;
 }
 
 .callroom-ctrl-btn:hover {
-  background: rgba(124, 77, 255, 0.2);
-  border-color: rgba(124, 77, 255, 0.5);
+  background: rgba(124, 77, 255, 0.25);
+  color: #fff;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(124, 77, 255, 0.25);
 }
 
-.callroom-ctrl-btn.active,
 .callroom-ctrl-btn.muted {
-  background: rgba(255, 68, 68, 0.12);
-  border-color: rgba(255, 68, 68, 0.4);
-  color: #ff7070;
-}
-
-.callroom-ctrl-btn.active:hover,
-.callroom-ctrl-btn.muted:hover {
-  background: rgba(255, 68, 68, 0.2);
-  box-shadow: 0 6px 20px rgba(255, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
 }
 
 .callroom-ctrl-btn.screen-active {
-  background: rgba(255, 200, 0, 0.12);
-  border-color: rgba(255, 200, 0, 0.4);
-  color: #ffd700;
-}
-
-.callroom-ctrl-btn.screen-active:hover {
-  background: rgba(255, 200, 0, 0.2);
-  box-shadow: 0 6px 20px rgba(255, 200, 0, 0.2);
+  background: rgba(37, 99, 235, 0.25);
+  border-color: rgba(37, 99, 235, 0.5);
+  color: #60a5fa;
 }
 
 .callroom-ctrl-btn.leave-btn {
-  width: 56px;
-  height: 56px;
-  background: rgba(220, 38, 38, 0.15);
-  border-color: rgba(220, 38, 38, 0.4);
-  color: #ff6666;
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
 }
 
 .callroom-ctrl-btn.leave-btn:hover {
-  background: rgba(220, 38, 38, 0.3);
-  border-color: #dc2626;
+  background: #ef4444;
   color: #fff;
-  box-shadow: 0 6px 24px rgba(220, 38, 38, 0.4);
+}
+
+.callroom-ctrl-btn-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
 .callroom-ctrl-divider {
   width: 1px;
   height: 32px;
-  background: rgba(124, 77, 255, 0.15);
-  margin: 0 4px;
-}
-
-.callroom-ctrl-btn-label {
-  position: absolute;
-  bottom: -22px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.62rem;
-  color: rgba(197, 179, 255, 0.4);
-  white-space: nowrap;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  pointer-events: none;
+  background: rgba(124, 77, 255, 0.2);
 }
 
 .callroom-chat-toggle-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 18px;
-  height: 42px;
-  border-radius: 22px;
-  border: 1px solid rgba(124, 77, 255, 0.25);
-  background: rgba(124, 77, 255, 0.08);
-  color: #c5b3ff;
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.callroom-chat-toggle-btn:hover {
-  background: rgba(124, 77, 255, 0.18);
-  border-color: rgba(124, 77, 255, 0.45);
-}
-
-.callroom-chat-toggle-btn.chat-open {
-  background: rgba(124, 77, 255, 0.2);
-  border-color: rgba(124, 77, 255, 0.5);
-  color: #b89eff;
-}
-
-.callroom-unread-badge {
-  background: #7c4dff;
-  color: #fff;
+  padding: 8px 14px;
   border-radius: 10px;
-  padding: 1px 6px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  min-width: 18px;
-  text-align: center;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  color: #c5b3ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
 }
 
-/* ─── Chat Sidebar ───────────────────────────────────────────────────────────── */
+/* ─── Sidebar (Chat + Roster) ────────────────────────────────────────────────── */
 .callroom-sidebar {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
-  background: rgba(12, 14, 22, 0.97);
+  background: #080910;
   border-left: 1px solid rgba(124, 77, 255, 0.15);
   overflow: hidden;
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 0; /* critical: allows flex children to shrink below content size */
-  height: 100%;  /* fill the grid area */
-}
-
-.callroom-sidebar.sidebar-hidden {
-  display: none;
+  z-index: 10;
 }
 
 .callroom-sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(124, 77, 255, 0.12);
-  background: rgba(124, 77, 255, 0.05);
-  flex-shrink: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(124, 77, 255, 0.15);
 }
 
 .callroom-sidebar-header h4 {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: #c5b3ff;
-  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .callroom-sidebar-close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(200, 180, 255, 0.5);
+  cursor: pointer;
+}
+
+.callroom-roster {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(124, 77, 255, 0.12);
+}
+
+.callroom-roster-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(200, 180, 255, 0.5);
+  margin-bottom: 6px;
+}
+
+.callroom-roster-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  margin-bottom: 4px;
+}
+
+.callroom-roster-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  border: none;
-  background: rgba(124, 77, 255, 0.1);
-  color: rgba(197, 179, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.2s;
+  background: #10b981;
 }
 
-.callroom-sidebar-close-btn:hover {
-  background: rgba(124, 77, 255, 0.25);
-  color: #c5b3ff;
-}
-
-/* ─── Messages Area ──────────────────────────────────────────────────────────── */
 .callroom-messages {
   flex: 1;
+  padding: 12px 16px;
   overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px 14px 6px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(124, 77, 255, 0.2) transparent;
-  min-height: 0; /* critical: allows flex:1 to scroll within constrained parent */
-}
-
-.callroom-messages::-webkit-scrollbar {
-  width: 4px;
-}
-
-.callroom-messages::-webkit-scrollbar-thumb {
-  background: rgba(124, 77, 255, 0.25);
-  border-radius: 2px;
 }
 
 .callroom-msg-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  animation: msg-pop 0.25s ease-out;
+  gap: 3px;
+  max-width: 88%;
 }
 
-@keyframes msg-pop {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.callroom-msg-item.own-msg .callroom-msg-bubble {
-  background: rgba(124, 77, 255, 0.18);
-  border-color: rgba(124, 77, 255, 0.3);
+.callroom-msg-item.own-msg {
   align-self: flex-end;
 }
 
@@ -592,279 +473,151 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 0.68rem;
+  color: rgba(200, 180, 255, 0.5);
 }
 
 .callroom-msg-author {
-  font-size: 0.7rem;
   font-weight: 700;
-  color: #b89eff;
-}
-
-.callroom-msg-time {
-  font-size: 0.65rem;
-  color: rgba(197, 179, 255, 0.3);
+  color: #a78bfa;
 }
 
 .callroom-msg-bubble {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(124, 77, 255, 0.1);
+  background: rgba(124, 77, 255, 0.15);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  padding: 7px 11px;
   border-radius: 10px;
-  padding: 8px 12px;
   font-size: 0.8rem;
-  color: #d4c8ff;
-  line-height: 1.5;
+  color: #e2e8f0;
   word-break: break-word;
 }
 
-.callroom-msg-system {
-  text-align: center;
-  font-size: 0.68rem;
-  color: rgba(197, 179, 255, 0.3);
-  padding: 4px 8px;
-  background: rgba(124, 77, 255, 0.05);
-  border-radius: 8px;
-  border: 1px solid rgba(124, 77, 255, 0.08);
-  font-style: italic;
+.callroom-msg-item.own-msg .callroom-msg-bubble {
+  background: linear-gradient(135deg, #7c4dff, #5c35cc);
+  border-color: transparent;
+  color: #ffffff;
 }
 
-/* ─── Message Input ──────────────────────────────────────────────────────────── */
 .callroom-msg-input-area {
-  padding: 10px 14px 14px;
-  border-top: 1px solid rgba(124, 77, 255, 0.1);
   display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: flex-end;
-  background: rgba(8, 9, 14, 0.5);
-  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(124, 77, 255, 0.15);
+  background: #06070c;
 }
 
 .callroom-msg-input {
   flex: 1;
-  background: rgba(124, 77, 255, 0.06);
+  background: rgba(124, 77, 255, 0.08);
   border: 1px solid rgba(124, 77, 255, 0.2);
-  border-radius: 10px;
-  padding: 8px 12px;
-  color: #e8eaf6;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #fff;
   font-size: 0.8rem;
-  font-family: inherit;
   resize: none;
-  min-height: 36px;
-  max-height: 80px;
   outline: none;
-  transition: border-color 0.2s;
-  line-height: 1.4;
-}
-
-.callroom-msg-input:focus {
-  border-color: rgba(124, 77, 255, 0.5);
-}
-
-.callroom-msg-input::placeholder {
-  color: rgba(197, 179, 255, 0.3);
 }
 
 .callroom-msg-send-btn {
+  background: #7c4dff;
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(135deg, #7c4dff, #5c35cc);
-  color: #fff;
   cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.callroom-msg-send-btn:hover {
-  background: linear-gradient(135deg, #9e6fff, #7c4dff);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(124, 77, 255, 0.4);
 }
 
 .callroom-msg-send-btn:disabled {
   opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
+  cursor: default;
 }
 
-/* ─── Roster Panel (inside sidebar when toggled) ─────────────────────────────── */
-.callroom-roster {
-  padding: 10px 14px;
-  border-top: 1px solid rgba(124, 77, 255, 0.1);
+.callroom-waiting-overlay {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-
-.callroom-roster-header {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(197, 179, 255, 0.4);
-  margin-bottom: 2px;
-}
-
-.callroom-roster-item {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.76rem;
-  color: rgba(197, 179, 255, 0.7);
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding: 24px;
 }
 
-.callroom-roster-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #4ade80;
-  box-shadow: 0 0 6px #4ade8088;
-  flex-shrink: 0;
-}
-
-/* ─── Access Gate Overlay ─────────────────────────────────────────────────────── */
 .callroom-access-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
-  background: rgba(8, 9, 14, 0.97);
+  background: rgba(4, 5, 10, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1000;
 }
 
-/* ─── Connection Banners ─────────────────────────────────────────────────────── */
-.callroom-reconnecting-banner,
-.callroom-error-banner {
-  position: absolute;
-  top: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 200, 0, 0.1);
-  border: 1px solid rgba(255, 200, 0, 0.35);
-  border-radius: 22px;
-  padding: 8px 20px;
-  font-size: 0.8rem;
-  color: #ffd700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 30;
-  backdrop-filter: blur(10px);
-  animation: slide-down 0.3s ease;
-}
-
-.callroom-error-banner {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: rgba(220, 38, 38, 0.35);
-  color: #ff8888;
-}
-
-@keyframes slide-down {
-  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-.callroom-reconnect-btn {
-  background: rgba(255, 200, 0, 0.15);
-  border: 1px solid rgba(255, 200, 0, 0.4);
-  border-radius: 14px;
-  color: #ffd700;
-  padding: 3px 10px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.callroom-reconnect-btn:hover {
-  background: rgba(255, 200, 0, 0.25);
-}
-
-/* ─── Sidebar Toggle: No sidebar ─────────────────────────────────────────────── */
-.callroom-root.no-sidebar {
-  grid-template-columns: 1fr;
-  grid-template-areas:
-    "header"
-    "grid"
-    "controls";
-}
-
-/* ─── Responsive Mobile ──────────────────────────────────────────────────────── */
+/* ─── Mobile Responsiveness ─────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .callroom-root {
-    grid-template-columns: 1fr;
     grid-template-areas:
       "header"
       "grid"
-      "controls";
+      "ctrl";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
   }
 
   .callroom-header {
-    padding: 0 10px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .callroom-header-left {
+    gap: 8px;
+  }
+
+  .callroom-title {
+    font-size: 0.78rem;
+  }
+
+  .callroom-top-action-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    margin: 6px !important;
+    padding: 8px !important;
+  }
+
+  .callroom-top-action-bar button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .callroom-video-mesh[data-count="2"],
+  .callroom-video-mesh[data-count="3"],
+  .callroom-video-mesh[data-count="4"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .callroom-controls {
+    padding: 8px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .callroom-ctrl-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
   }
 
   .callroom-sidebar {
     position: fixed;
-    top: 56px;
-    right: 0;
-    width: 100vw !important;
-    height: calc(100vh - 56px - 72px);
-    z-index: 50;
-    border-left: none;
-    border-top: 1px solid rgba(124, 77, 255, 0.2);
-  }
-
-  .callroom-sidebar.sidebar-hidden {
-    display: none;
-  }
-
-  .callroom-controls {
-    gap: 8px;
-    padding: 0 12px;
-  }
-
-  .callroom-ctrl-btn {
-    width: 42px;
-    height: 42px;
-  }
-
-  .callroom-ctrl-btn-label {
-    display: none;
-  }
-
-  .callroom-ctrl-divider {
-    height: 20px;
-    margin: 0 2px;
-  }
-
-  /* Optimize portrait screen mesh grids */
-  .callroom-video-mesh[data-count="2"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
-  .callroom-video-mesh[data-count="3"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: repeat(3, 1fr);
-  }
-  .callroom-video-mesh[data-count="4"] {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-  }
-
-  .callroom-video-mesh.many-participants {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 480px) {
-  .callroom-title {
-    display: none !important;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 200;
   }
 }
