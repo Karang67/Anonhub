@@ -425,22 +425,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.5);
   color: #ef4444;
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  font-weight: 600;
+  font-size: 0.8rem;
 }
 
 .callroom-sidebar-close-btn:hover,
 .callroom-sidebar-close-btn:active {
   background: #ef4444;
   color: #ffffff;
-  transform: scale(1.05);
+  transform: scale(1.03);
 }
 
 .callroom-roster {
@@ -636,29 +638,52 @@
     border-radius: 10px;
   }
 
-  /* Full-screen chat overlay on mobile with large 44px close tap target */
+  /* Full-screen chat overlay on mobile with ultra-high z-index above site navbar */
   .callroom-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 999;
-    background: #080910;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+    background: #080910 !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .callroom-sidebar-header {
-    padding: 16px;
-    border-bottom: 1px solid rgba(124, 77, 255, 0.2);
+    position: sticky !important;
+    top: 0 !important;
+    padding: 16px 20px !important;
+    background: #0d0f1a !important;
+    border-bottom: 1px solid rgba(124, 77, 255, 0.3) !important;
+    z-index: 1000000 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8) !important;
   }
 
   .callroom-sidebar-close-btn {
-    width: 44px;
-    height: 44px;
-    background: rgba(239, 68, 68, 0.25);
-    border: 1px solid rgba(239, 68, 68, 0.6);
-    color: #ef4444;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 16px !important;
+    border-radius: 20px !important;
+    background: #ef4444 !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 0.85rem !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4) !important;
+    z-index: 1000001 !important;
+  }
+
+  .callroom-sidebar-close-btn:active {
+    transform: scale(0.95) !important;
+    background: #dc2626 !important;
   }
 }

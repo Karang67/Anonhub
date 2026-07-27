@@ -1491,6 +1491,7 @@ export default function CallRoom() {
               title="Close Chat"
             >
               <X size={20} />
+              <span style={{ marginLeft: '4px' }}>Close</span>
             </button>
           </div>
 
