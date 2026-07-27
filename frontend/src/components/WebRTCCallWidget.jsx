@@ -87,10 +87,11 @@ function getAvatarColor(name) {
 
 // ─── MoQ WebTransport & WebCodecs Helper Class ────────────────────────────────
 class MoQSession {
-  constructor(serverUrl, roomName, username, onPeerFrame, onPeerAudio) {
+  constructor(serverUrl, roomName, username, socket, onPeerFrame, onPeerAudio) {
     this.serverUrl = serverUrl;
     this.roomName = roomName;
     this.username = username;
+    this.socket = socket;
     this.onPeerFrame = onPeerFrame;
     this.onPeerAudio = onPeerAudio;
     this.transport = null;
@@ -99,43 +100,121 @@ class MoQSession {
     this.videoWriter = null;
     this.audioWriter = null;
     this.connected = false;
-    this.audioContext = null;
+    this.mode = 'WebTransport'; // 'WebTransport' | 'SocketRelay'
+    this.peerDecoders = {}; // { peerId: { videoDecoder, audioDecoder } }
+    this.audioCtx = null;
   }
 
   async connect() {
-    try {
-      if (typeof WebTransport === 'undefined') {
-        console.warn('WebTransport API is not supported in this browser environment. MoQ falling back to simulation mode.');
-        return false;
-      }
-      const fullUrl = `${this.serverUrl}/${encodeURIComponent(this.roomName)}/${encodeURIComponent(this.username)}`;
-      this.transport = new WebTransport(fullUrl);
-      await this.transport.ready;
-      this.connected = true;
-      console.log('MoQ WebTransport connection established to MediaMTX:', fullUrl);
+    this.connected = true;
 
-      // Listen for incoming streams from MediaMTX relay
-      this.listenIncomingStreams();
-      return true;
-    } catch (err) {
-      console.warn('Failed to establish MoQ WebTransport connection to MediaMTX server:', err);
-      return false;
+    // Try native WebTransport connection to MediaMTX MoQ endpoint
+    if (typeof WebTransport !== 'undefined') {
+      try {
+        const fullUrl = `${this.serverUrl}/${encodeURIComponent(this.roomName)}/${encodeURIComponent(this.username)}`;
+        this.transport = new WebTransport(fullUrl);
+        await this.transport.ready;
+        this.mode = 'WebTransport';
+        console.log('MoQ WebTransport connection established to MediaMTX:', fullUrl);
+        this.listenIncomingStreams();
+        return true;
+      } catch (err) {
+        console.warn('MediaMTX WebTransport server not reachable on localhost:8554. Falling back to Socket.IO MoQ packet relay mode:', err);
+      }
+    }
+
+    // Fallback mode: MoQ over Socket.IO binary stream
+    this.mode = 'SocketRelay';
+    console.log('MoQ Active mode: Socket.IO binary stream relay');
+
+    if (this.socket) {
+      this.socket.on('moq-packet', ({ senderId, packet }) => {
+        this.processIncomingPacket(senderId, new Uint8Array(packet));
+      });
+    }
+
+    return true;
+  }
+
+  getPeerDecoders(senderId) {
+    if (!this.peerDecoders[senderId]) {
+      let videoDecoder = null;
+      let audioDecoder = null;
+
+      if (typeof VideoDecoder !== 'undefined') {
+        try {
+          videoDecoder = new VideoDecoder({
+            output: (frame) => {
+              if (this.onPeerFrame) this.onPeerFrame(senderId, frame);
+            },
+            error: (e) => console.error(`VideoDecoder error for peer ${senderId}:`, e)
+          });
+          videoDecoder.configure({ codec: 'avc1.42E01E' });
+        } catch (e) {
+          console.error('VideoDecoder config error:', e);
+        }
+      }
+
+      if (typeof AudioDecoder !== 'undefined') {
+        try {
+          audioDecoder = new AudioDecoder({
+            output: (audioData) => {
+              this.playAudioData(audioData);
+              audioData.close();
+            },
+            error: (e) => console.error(`AudioDecoder error for peer ${senderId}:`, e)
+          });
+          audioDecoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
+        } catch (e) {
+          console.error('AudioDecoder config error:', e);
+        }
+      }
+
+      this.peerDecoders[senderId] = { videoDecoder, audioDecoder };
+    }
+
+    return this.peerDecoders[senderId];
+  }
+
+  playAudioData(audioData) {
+    try {
+      if (!this.audioCtx) {
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+      const buffer = this.audioCtx.createBuffer(
+        audioData.numberOfChannels,
+        audioData.numberOfFrames,
+        audioData.sampleRate
+      );
+      for (let channel = 0; channel < audioData.numberOfChannels; channel++) {
+        const channelData = buffer.getChannelData(channel);
+        audioData.copyTo(channelData, { planeIndex: channel });
+      }
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.audioCtx.destination);
+      source.start();
+    } catch (e) {
+      // Audio playback catch
     }
   }
 
   async initEncoders(videoTrack, audioTrack) {
-    if (!this.transport || !this.connected) return;
+    if (!this.connected) return;
 
-    // Create SendStreams for outbound MoQ tracks
-    try {
-      const sendStreamVideo = await this.transport.createUnidirectionalStream();
-      this.videoWriter = sendStreamVideo.getWriter();
+    if (this.mode === 'WebTransport' && this.transport) {
+      try {
+        const sendStreamVideo = await this.transport.createUnidirectionalStream();
+        this.videoWriter = sendStreamVideo.getWriter();
 
-      const sendStreamAudio = await this.transport.createUnidirectionalStream();
-      this.audioWriter = sendStreamAudio.getWriter();
-    } catch (err) {
-      console.error('Error creating WebTransport SendStreams:', err);
-      return;
+        const sendStreamAudio = await this.transport.createUnidirectionalStream();
+        this.audioWriter = sendStreamAudio.getWriter();
+      } catch (err) {
+        console.error('Error creating WebTransport SendStreams:', err);
+      }
     }
 
     // Initialize WebCodecs VideoEncoder
@@ -225,9 +304,6 @@ class MoQSession {
   }
 
   async handleEncodedVideoChunk(chunk, metadata) {
-    if (!this.videoWriter) return;
-
-    // Pack MoQ binary frame: [TrackType (1B), Timestamp (8B Float64), Length (4B UInt32), Payload]
     const payload = new Uint8Array(chunk.byteLength);
     chunk.copyTo(payload);
 
@@ -241,16 +317,10 @@ class MoQSession {
     packet.set(new Uint8Array(header), 0);
     packet.set(payload, 13);
 
-    try {
-      await this.videoWriter.write(packet);
-    } catch (e) {
-      console.warn('MoQ video packet send error:', e);
-    }
+    this.sendPacket(packet);
   }
 
   async handleEncodedAudioChunk(chunk, metadata) {
-    if (!this.audioWriter) return;
-
     const payload = new Uint8Array(chunk.byteLength);
     chunk.copyTo(payload);
 
@@ -264,10 +334,21 @@ class MoQSession {
     packet.set(new Uint8Array(header), 0);
     packet.set(payload, 13);
 
-    try {
-      await this.audioWriter.write(packet);
-    } catch (e) {
-      console.warn('MoQ audio packet send error:', e);
+    this.sendPacket(packet);
+  }
+
+  async sendPacket(packet) {
+    if (this.mode === 'WebTransport' && this.videoWriter) {
+      try {
+        await this.videoWriter.write(packet);
+      } catch (e) {
+        // Retry via Socket.IO
+        if (this.socket) {
+          this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
+        }
+      }
+    } else if (this.socket) {
+      this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
     }
   }
 
@@ -287,61 +368,49 @@ class MoQSession {
 
   async readIncomingMoQStream(stream) {
     const reader = stream.getReader();
-    let videoDecoder = null;
-    let audioDecoder = null;
-
-    if (typeof VideoDecoder !== 'undefined') {
-      videoDecoder = new VideoDecoder({
-        output: (frame) => {
-          if (this.onPeerFrame) this.onPeerFrame(frame);
-        },
-        error: (e) => console.error('VideoDecoder error:', e)
-      });
-      videoDecoder.configure({ codec: 'avc1.42E01E' });
-    }
-
-    if (typeof AudioDecoder !== 'undefined') {
-      audioDecoder = new AudioDecoder({
-        output: (audioData) => {
-          if (this.onPeerAudio) this.onPeerAudio(audioData);
-        },
-        error: (e) => console.error('AudioDecoder error:', e)
-      });
-      audioDecoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
-    }
-
     while (this.connected) {
       try {
         const { value, done } = await reader.read();
         if (done || !value) break;
-
-        // Parse MoQ header
-        if (value.byteLength >= 13) {
-          const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
-          const trackType = view.getUint8(0);
-          const timestamp = view.getFloat64(1, false);
-          const payloadLen = view.getUint32(9, false);
-
-          const payload = value.subarray(13, 13 + payloadLen);
-
-          if ((trackType === 0x01 || trackType === 0x02) && videoDecoder) {
-            const chunk = new EncodedVideoChunk({
-              type: trackType === 0x01 ? 'key' : 'delta',
-              timestamp: timestamp * 1000,
-              data: payload
-            });
-            videoDecoder.decode(chunk);
-          } else if (trackType === 0x03 && audioDecoder) {
-            const chunk = new EncodedAudioChunk({
-              type: 'key',
-              timestamp: timestamp * 1000,
-              data: payload
-            });
-            audioDecoder.decode(chunk);
-          }
-        }
+        this.processIncomingPacket('remote-peer', value);
       } catch (e) {
         break;
+      }
+    }
+  }
+
+  processIncomingPacket(senderId, packetBytes) {
+    if (packetBytes.byteLength < 13) return;
+
+    const view = new DataView(packetBytes.buffer, packetBytes.byteOffset, packetBytes.byteLength);
+    const trackType = view.getUint8(0);
+    const timestamp = view.getFloat64(1, false);
+    const payloadLen = view.getUint32(9, false);
+
+    const payload = packetBytes.subarray(13, 13 + payloadLen);
+    const { videoDecoder, audioDecoder } = this.getPeerDecoders(senderId);
+
+    if ((trackType === 0x01 || trackType === 0x02) && videoDecoder) {
+      try {
+        const chunk = new EncodedVideoChunk({
+          type: trackType === 0x01 ? 'key' : 'delta',
+          timestamp: timestamp * 1000,
+          data: payload
+        });
+        videoDecoder.decode(chunk);
+      } catch (e) {
+        console.warn('Video chunk decode error:', e);
+      }
+    } else if (trackType === 0x03 && audioDecoder) {
+      try {
+        const chunk = new EncodedAudioChunk({
+          type: 'key',
+          timestamp: timestamp * 1000,
+          data: payload
+        });
+        audioDecoder.decode(chunk);
+      } catch (e) {
+        console.warn('Audio chunk decode error:', e);
       }
     }
   }
@@ -350,7 +419,12 @@ class MoQSession {
     this.connected = false;
     if (this.videoEncoder) { try { this.videoEncoder.close(); } catch (e) { } }
     if (this.audioEncoder) { try { this.audioEncoder.close(); } catch (e) { } }
+    Object.values(this.peerDecoders).forEach(({ videoDecoder, audioDecoder }) => {
+      if (videoDecoder) { try { videoDecoder.close(); } catch (e) { } }
+      if (audioDecoder) { try { audioDecoder.close(); } catch (e) { } }
+    });
     if (this.transport) { try { this.transport.close(); } catch (e) { } }
+    if (this.audioCtx) { try { this.audioCtx.close(); } catch (e) { } }
   }
 }
 
@@ -361,9 +435,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [peers, setPeers] = useState([]); // [{ socketId, username, stream }]
+  const [peers, setPeers] = useState([]); // [{ socketId, username, lastFrame }]
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [transportMode, setTransportMode] = useState('MoQ');
   const [micMutedMap, setMicMutedMap] = useState({});
 
   const localStreamRef = useRef(null);
@@ -414,50 +489,40 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
       // WEBRTC_DEPRECATED
       /*
-      // Join the signaling pool with enhanced error handling
-      socket.emit('webrtc-join-call', { projectName }, (response) => {
-        console.log('Join call response:', response);
-        if (response && response.error) {
-          console.error('Failed to join call:', response.error);
-          alert(`Could not join the call: ${response.error}`);
-          endCall();
-        } else if (response && Array.isArray(response.existingPeers)) {
-          response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
-            if (!peersRef.current[sid]) {
-              // isInitiator=true: the joining user must send the SDP offer
-              const pc = createPeerConnection(sid, peerName || 'Participant', true);
-              peersRef.current[sid] = pc;
-            }
-          });
-        }
-      });
+      socket.emit('webrtc-join-call', { projectName }, (response) => { ... });
       */
 
-      // Initialize MoQ WebTransport & WebCodecs session
+      // Initialize MoQ Session with WebTransport & Socket.IO fallback
       const moqServerUrl = 'https://localhost:8554/moq_server';
       const session = new MoQSession(
         moqServerUrl,
         projectName,
         username || 'anonymous',
-        (videoFrame) => {
-          // Handle decoded remote frame
-          videoFrame.close();
+        socket,
+        (peerId, videoFrame) => {
+          setPeers(prev => {
+            const idx = prev.findIndex(p => p.socketId === peerId);
+            if (idx !== -1) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], lastFrame: videoFrame };
+              return updated;
+            }
+            return [...prev, { socketId: peerId, username: 'Participant', lastFrame: videoFrame }];
+          });
         },
-        (audioData) => {
-          // Handle decoded remote audio
+        (peerId, audioData) => {
           audioData.close();
         }
       );
 
       moqSessionRef.current = session;
-      const connected = await session.connect();
-      if (connected) {
-        const vTrack = stream.getVideoTracks()[0];
-        const aTrack = stream.getAudioTracks()[0];
-        session.initEncoders(vTrack, aTrack);
-      }
+      await session.connect();
+      setTransportMode(session.mode === 'WebTransport' ? 'MoQ (QUIC)' : 'MoQ (Relay)');
 
-      // Socket room registration for roster
+      const vTrack = stream.getVideoTracks()[0];
+      const aTrack = stream.getAudioTracks()[0];
+      session.initEncoders(vTrack, aTrack);
+
       if (socket) {
         socket.emit('moq-join-room', { projectName, username });
       }
@@ -480,13 +545,11 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       socket.emit('moq-leave-room', { projectName });
     }
 
-    // Stop MoQ session
     if (moqSessionRef.current) {
       moqSessionRef.current.disconnect();
       moqSessionRef.current = null;
     }
 
-    // Stop all local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
@@ -498,15 +561,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
     // WEBRTC_DEPRECATED
     /*
-    Object.keys(peersRef.current).forEach(id => {
-      try {
-        peersRef.current[id].close();
-      } catch (e) {
-        console.warn(`Error closing peer connection ${id}:`, e);
-      }
-    });
-    peersRef.current = {};
-    streamsRef.current = {};
+    Object.keys(peersRef.current).forEach(id => { ... });
     */
 
     inCallRef.current = false;
@@ -518,62 +573,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   // WEBRTC_DEPRECATED
   /*
-  const createPeerConnection = (peerSocketId, peerName, isInitiator) => {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socket) {
-        socket.emit('webrtc-signal', {
-          targetId: peerSocketId,
-          signal: { candidate: event.candidate }
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const prevStream = streamsRef.current[peerSocketId];
-      const newStream = new MediaStream();
-      if (prevStream) {
-        prevStream.getTracks().forEach(t => newStream.addTrack(t));
-      }
-      newStream.addTrack(event.track);
-      streamsRef.current[peerSocketId] = newStream;
-
-      setPeers(prev => {
-        const idx = prev.findIndex(p => p.socketId === peerSocketId);
-        if (idx !== -1) {
-          const updated = [...prev];
-          updated[idx] = { ...updated[idx], username: peerName || updated[idx].username, stream: newStream };
-          return updated;
-        }
-        return [...prev, { socketId: peerSocketId, username: peerName || 'Participant', stream: newStream }];
-      });
-    };
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        if (track.readyState === 'live') {
-          pc.addTrack(track, localStreamRef.current);
-        }
-      });
-    }
-
-    if (isInitiator) {
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
-          if (socket) {
-            socket.emit('webrtc-signal', {
-              targetId: peerSocketId,
-              signal: { sdp: pc.localDescription }
-            });
-          }
-        })
-        .catch(err => console.error('Error creating offer:', err));
-    }
-
-    return pc;
-  };
+  const createPeerConnection = (peerSocketId, peerName, isInitiator) => { ... };
   */
 
   useEffect(() => {
@@ -583,7 +583,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       setMicMutedMap(prev => ({ ...prev, [socketId]: muted }));
     };
 
-    // Socket events for roster synchronization
     const handleUserJoined = ({ socketId, username: peerName }) => {
       setPeers(prev => {
         if (prev.find(p => p.socketId === socketId)) return prev;
@@ -716,13 +715,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
       {!inCall ? (
         <button className="call-btn-trigger" onClick={startCall}>
-          <PhoneCall size={14} /> Join Voice &amp; Video (MoQ)
+          <PhoneCall size={14} /> Join Voice &amp; Video ({transportMode})
         </button>
       ) : (
         <div className="webrtc-call-workspace">
           <div className="webrtc-participant-count">
             <span className="webrtc-live-dot" />
-            {1 + peers.length} participant{(1 + peers.length) !== 1 ? 's' : ''} [MoQ Active]
+            {1 + peers.length} participant{(1 + peers.length) !== 1 ? 's' : ''} [{transportMode}]
           </div>
 
           <div className="webrtc-video-grid">
@@ -753,7 +752,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               </div>
             </div>
 
-            {/* Remote peer tiles (Rendered via MoQ canvas/decoder pipeline) */}
+            {/* Remote peer tiles */}
             {peers.map(peer => (
               <MoQVideoCard
                 key={peer.socketId}
@@ -805,6 +804,19 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 function MoQVideoCard({ peer, isMicMuted }) {
   const canvasRef = useRef(null);
   const [hasVideo, setHasVideo] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas && peer.lastFrame) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = peer.lastFrame.displayWidth || 640;
+        canvas.height = peer.lastFrame.displayHeight || 480;
+        ctx.drawImage(peer.lastFrame, 0, 0, canvas.width, canvas.height);
+        setHasVideo(true);
+      }
+    }
+  }, [peer.lastFrame]);
 
   return (
     <div className="video-card remote-view" style={{ position: 'relative' }}>

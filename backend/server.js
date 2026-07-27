@@ -1858,6 +1858,12 @@ io.on('connection', (socket) => {
         socket.to(`${name}-moq`).emit('moq-user-left', { socketId: socket.id });
     });
 
+    socket.on('moq-packet', ({ projectName, packet }) => {
+        const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name) return;
+        socket.to(`${name}-moq`).emit('moq-packet', { senderId: socket.id, packet });
+    });
+
     // ─── Event: mic-status (relay mute state to room peers) ───────────
     socket.on('mic-status', ({ projectName, muted }) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
