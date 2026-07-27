@@ -1840,12 +1840,30 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ─── Event: mic-status (relay mute state to WebRTC room peers) ───────────
+    // ─── MoQ Signaling & Roster Sync ──────────────────────────────────────────
+    socket.on('moq-join-room', ({ projectName, username }, callback) => {
+        const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name) return;
+        const roomName = `${name}-moq`;
+        socket.join(roomName);
+        const peerUsername = username || activeUsers.get(socket.id)?.username || 'Participant';
+        socket.to(roomName).emit('moq-user-joined', { socketId: socket.id, username: peerUsername });
+        if (typeof callback === 'function') callback({ success: true });
+    });
+
+    socket.on('moq-leave-room', ({ projectName }) => {
+        const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name) return;
+        socket.leave(`${name}-moq`);
+        socket.to(`${name}-moq`).emit('moq-user-left', { socketId: socket.id });
+    });
+
+    // ─── Event: mic-status (relay mute state to room peers) ───────────
     socket.on('mic-status', ({ projectName, muted }) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
         if (!name) return;
-        // Relay to everyone else in the WebRTC signaling room
-        socket.to(`${name}-webrtc`).emit('peer-mic-status', {
+        // Relay to everyone else in WebRTC & MoQ signaling rooms
+        socket.to(`${name}-webrtc`).to(`${name}-moq`).emit('peer-mic-status', {
             socketId: socket.id,
             muted: !!muted
         });

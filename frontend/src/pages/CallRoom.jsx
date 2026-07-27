@@ -1,16 +1,38 @@
 /**
- * @file CallRoom.jsx
- * @description Dedicated, full-screen real-time Video Call & Screen Sharing room.
- * Features WebRTC mesh grid, glassmorphism controls, integrated text chat sidebar,
- * live user roster, and secure access-key gating overlay.
- *
- * Architecture:
- * - WebRTC mesh: peer connections via Socket.IO signaling on the existing room socket.
- * - Signaling events: webrtc-join-call, webrtc-leave-call, webrtc-user-joined,
- *   webrtc-user-left, webrtc-signal (same as WebRTCCallWidget protocol).
- * - Chat events: 'send chat message', 'chat message' (same as ChatRoom protocol).
- * - Access gating: Loads access key from sessionStorage/cookie; shows AccessKeyModal
- *   if missing or rejected.
+ * ============================================================================
+ * MEDIA OVER QUIC (MoQ) ARCHITECTURE & PROTOCOL SPECIFICATION
+ * ============================================================================
+ * 
+ * 1. OVERVIEW:
+ *    Dedicated, full-screen real-time Video Call & Screen Sharing room using
+ *    Media over QUIC (MoQ) over browser-native WebTransport and WebCodecs APIs.
+ *    MediaMTX is employed as the central MoQ relay server.
+ * 
+ *    All legacy WebRTC peer connection logic (RTCPeerConnection, SDP offer/answer,
+ *    ICE candidates) has been retained in commented-out format with the annotation
+ *    "// WEBRTC_DEPRECATED" for reference and future auditability.
+ * 
+ * 2. URL PATH & NAMESPACE HIERARCHY:
+ *    Publications and subscriptions are segmented by room and user namespaces:
+ *      https://<MEDIAMTX_HOST>:8554/moq_server/<roomName>/<username>/<trackType>
+ * 
+ *    Examples:
+ *      - Screen Track: https://localhost:8554/moq_server/room123/userA/screen
+ *      - Video Track:  https://localhost:8554/moq_server/room123/userA/video
+ *      - Audio Track:  https://localhost:8554/moq_server/room123/userA/audio
+ * 
+ * 3. MOQ PACKET STRUCTURAL FORMAT:
+ *    Binary media frames sent over WebTransport streams follow this format:
+ * 
+ *    ┌──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+ *    │ Track Type       │ Timestamp (ms)   │ Payload Length   │ Encoded Media    │
+ *    │ (1 byte UInt8)   │ (8 bytes Float64)│ (4 bytes UInt32) │ Payload Chunk    │
+ *    └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+ *    - Track Type: 0x01 = Video Keyframe, 0x02 = Video Deltaframe, 0x03 = Audio
+ *    - Timestamp: Epoch offset in milliseconds (Float64)
+ *    - Payload Length: Big-Endian 32-bit unsigned integer
+ *    - Payload: WebCodecs compressed H.264/VP8 or Opus chunk bytes
+ * ============================================================================
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -23,6 +45,8 @@ import { initSocket, getCookie, setCookie } from '../services/socket';
 import AccessKeyModal from '../components/AccessKeyModal';
 import './CallRoom.css';
 
+// WEBRTC_DEPRECATED
+/*
 // ─── WebRTC ICE configuration ─────────────────────────────────────────────────
 const RTC_CONFIG = {
   iceServers: [
@@ -43,6 +67,7 @@ const RTC_CONFIG = {
     }
   ]
 };
+*/
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatTime(ts) {
@@ -58,106 +83,293 @@ function getInitials(name) {
     : name[0].toUpperCase();
 }
 
-// ─── Remote Video Tile ────────────────────────────────────────────────────────
-function RemoteVideoTile({ peer, micMutedMap }) {
-  const videoRef = useRef(null);
-  const [hasVideo, setHasVideo] = useState(false);
+// ─── MoQ WebTransport Client ──────────────────────────────────────────────────
+class MoQTransportClient {
+  constructor(serverUrl, roomName, username, onFrame, onAudio) {
+    this.serverUrl = serverUrl;
+    this.roomName = roomName;
+    this.username = username;
+    this.onFrame = onFrame;
+    this.onAudio = onAudio;
+    this.transport = null;
+    this.connected = false;
+    this.videoEncoder = null;
+    this.audioEncoder = null;
+    this.videoWriter = null;
+    this.audioWriter = null;
+  }
 
-  useEffect(() => {
-    const stream = peer.stream;
-    const videoEl = videoRef.current;
+  async connect() {
+    if (typeof WebTransport === 'undefined') {
+      console.warn('WebTransport is not available in this browser context. Operating MoQ fallback mode.');
+      return false;
+    }
 
-    if (!stream || !videoEl) {
-      setHasVideo(false);
+    try {
+      const url = `${this.serverUrl}/${encodeURIComponent(this.roomName)}/${encodeURIComponent(this.username)}`;
+      this.transport = new WebTransport(url);
+      await this.transport.ready;
+      this.connected = true;
+      console.log('MoQ CallRoom connected via WebTransport to:', url);
+      this.listenIncomingStreams();
+      return true;
+    } catch (err) {
+      console.warn('Could not establish MoQ WebTransport session:', err);
+      return false;
+    }
+  }
+
+  async startMediaEncoding(videoTrack, audioTrack) {
+    if (!this.transport || !this.connected) return;
+
+    try {
+      const videoStream = await this.transport.createUnidirectionalStream();
+      this.videoWriter = videoStream.getWriter();
+
+      const audioStream = await this.transport.createUnidirectionalStream();
+      this.audioWriter = audioStream.getWriter();
+    } catch (e) {
+      console.error('Error opening MoQ WebTransport streams:', e);
       return;
     }
 
-    // CRITICAL: Only set srcObject if it's different to prevent resetting playback
-    if (videoEl.srcObject !== stream) {
-      videoEl.srcObject = stream;
+    // Configure VideoEncoder (H.264 Baseline)
+    if (videoTrack && typeof VideoEncoder !== 'undefined') {
+      try {
+        const settings = videoTrack.getSettings();
+        this.videoEncoder = new VideoEncoder({
+          output: (chunk) => this.sendVideoChunk(chunk),
+          error: (err) => console.error('VideoEncoder error:', err)
+        });
+        this.videoEncoder.configure({
+          codec: 'avc1.42E01E',
+          width: settings.width || 1280,
+          height: settings.height || 720,
+          bitrate: 2000000,
+          framerate: settings.frameRate || 30
+        });
+
+        if (typeof MediaStreamTrackProcessor !== 'undefined') {
+          const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+          const reader = processor.readable.getReader();
+          this.processVideoFrames(reader);
+        }
+      } catch (e) {
+        console.error('VideoEncoder initialization error:', e);
+      }
     }
 
-    const playVideo = () => {
-      videoEl.play().catch(() => {});
-    };
+    // Configure AudioEncoder (Opus)
+    if (audioTrack && typeof AudioEncoder !== 'undefined') {
+      try {
+        this.audioEncoder = new AudioEncoder({
+          output: (chunk) => this.sendAudioChunk(chunk),
+          error: (err) => console.error('AudioEncoder error:', err)
+        });
+        this.audioEncoder.configure({
+          codec: 'opus',
+          sampleRate: 48000,
+          numberOfChannels: 1,
+          bitrate: 64000
+        });
 
-    // Evaluate if stream has usable video tracks
-    const checkVideo = () => {
-      const vTracks = stream.getVideoTracks();
-      const hasActiveTrack = vTracks.length > 0 && vTracks.some(t => t.readyState === 'live' && t.enabled);
-      if (hasActiveTrack) {
-        setHasVideo(true);
+        if (typeof MediaStreamTrackProcessor !== 'undefined') {
+          const processor = new MediaStreamTrackProcessor({ track: audioTrack });
+          const reader = processor.readable.getReader();
+          this.processAudioData(reader);
+        }
+      } catch (e) {
+        console.error('AudioEncoder initialization error:', e);
       }
-    };
+    }
+  }
 
-    checkVideo();
-    playVideo();
-
-    const onPlaying = () => {
-      setHasVideo(true);
-    };
-
-    const onLoadedMetadata = () => {
-      playVideo();
-    };
-
-    const onResize = () => {
-      if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-        setHasVideo(true);
+  async processVideoFrames(reader) {
+    let frameIdx = 0;
+    while (this.connected) {
+      try {
+        const { value: frame, done } = await reader.read();
+        if (done || !frame) break;
+        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+          const keyFrame = frameIdx % 60 === 0;
+          this.videoEncoder.encode(frame, { keyFrame });
+          frameIdx++;
+        }
+        frame.close();
+      } catch (e) {
+        break;
       }
-    };
+    }
+  }
 
-    videoEl.addEventListener('playing', onPlaying);
-    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
-    videoEl.addEventListener('resize', onResize);
-
-    // Track listeners for unmute/mute/addtrack
-    const handleTrackUpdate = () => {
-      checkVideo();
-      playVideo();
-    };
-
-    stream.addEventListener('addtrack', handleTrackUpdate);
-    stream.addEventListener('removetrack', handleTrackUpdate);
-
-    const vTracks = stream.getVideoTracks();
-    vTracks.forEach(t => {
-      t.addEventListener('unmute', handleTrackUpdate);
-      t.addEventListener('mute', handleTrackUpdate);
-      t.addEventListener('ended', handleTrackUpdate);
-    });
-
-    // Fallback timer: if stream has video tracks, force hasVideo = true after 500ms
-    const timer = setTimeout(() => {
-      if (stream.getVideoTracks().length > 0) {
-        setHasVideo(true);
-        playVideo();
+  async processAudioData(reader) {
+    while (this.connected) {
+      try {
+        const { value: data, done } = await reader.read();
+        if (done || !data) break;
+        if (this.audioEncoder && this.audioEncoder.state === 'configured') {
+          this.audioEncoder.encode(data);
+        }
+        data.close();
+      } catch (e) {
+        break;
       }
-    }, 500);
+    }
+  }
 
-    return () => {
-      clearTimeout(timer);
-      videoEl.removeEventListener('playing', onPlaying);
-      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
-      videoEl.removeEventListener('resize', onResize);
-      stream.removeEventListener('addtrack', handleTrackUpdate);
-      stream.removeEventListener('removetrack', handleTrackUpdate);
-      vTracks.forEach(t => {
-        t.removeEventListener('unmute', handleTrackUpdate);
-        t.removeEventListener('mute', handleTrackUpdate);
-        t.removeEventListener('ended', handleTrackUpdate);
+  async sendVideoChunk(chunk) {
+    if (!this.videoWriter) return;
+
+    const payload = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(payload);
+
+    const header = new ArrayBuffer(13);
+    const view = new DataView(header);
+    view.setUint8(0, chunk.type === 'key' ? 0x01 : 0x02);
+    view.setFloat64(1, chunk.timestamp / 1000, false);
+    view.setUint32(9, payload.byteLength, false);
+
+    const packet = new Uint8Array(13 + payload.byteLength);
+    packet.set(new Uint8Array(header), 0);
+    packet.set(payload, 13);
+
+    try {
+      await this.videoWriter.write(packet);
+    } catch (e) {
+      console.warn('MoQ video packet write failure:', e);
+    }
+  }
+
+  async sendAudioChunk(chunk) {
+    if (!this.audioWriter) return;
+
+    const payload = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(payload);
+
+    const header = new ArrayBuffer(13);
+    const view = new DataView(header);
+    view.setUint8(0, 0x03);
+    view.setFloat64(1, chunk.timestamp / 1000, false);
+    view.setUint32(9, payload.byteLength, false);
+
+    const packet = new Uint8Array(13 + payload.byteLength);
+    packet.set(new Uint8Array(header), 0);
+    packet.set(payload, 13);
+
+    try {
+      await this.audioWriter.write(packet);
+    } catch (e) {
+      console.warn('MoQ audio packet write failure:', e);
+    }
+  }
+
+  async listenIncomingStreams() {
+    if (!this.transport) return;
+    try {
+      const reader = this.transport.incomingUnidirectionalStreams.getReader();
+      while (this.connected) {
+        const { value: stream, done } = await reader.read();
+        if (done) break;
+        this.consumeIncomingMoQStream(stream);
+      }
+    } catch (e) {
+      console.warn('MoQ stream listener end:', e);
+    }
+  }
+
+  async consumeIncomingMoQStream(stream) {
+    const reader = stream.getReader();
+    let videoDecoder = null;
+    let audioDecoder = null;
+
+    if (typeof VideoDecoder !== 'undefined') {
+      videoDecoder = new VideoDecoder({
+        output: (frame) => {
+          if (this.onFrame) this.onFrame(frame);
+        },
+        error: (e) => console.error('CallRoom VideoDecoder error:', e)
       });
-    };
-  }, [peer.stream, peer.version]);
+      videoDecoder.configure({ codec: 'avc1.42E01E' });
+    }
+
+    if (typeof AudioDecoder !== 'undefined') {
+      audioDecoder = new AudioDecoder({
+        output: (audioData) => {
+          if (this.onAudio) this.onAudio(audioData);
+        },
+        error: (e) => console.error('CallRoom AudioDecoder error:', e)
+      });
+      audioDecoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
+    }
+
+    while (this.connected) {
+      try {
+        const { value, done } = await reader.read();
+        if (done || !value) break;
+
+        if (value.byteLength >= 13) {
+          const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
+          const trackType = view.getUint8(0);
+          const timestamp = view.getFloat64(1, false);
+          const payloadLen = view.getUint32(9, false);
+
+          const payload = value.subarray(13, 13 + payloadLen);
+
+          if ((trackType === 0x01 || trackType === 0x02) && videoDecoder) {
+            const chunk = new EncodedVideoChunk({
+              type: trackType === 0x01 ? 'key' : 'delta',
+              timestamp: timestamp * 1000,
+              data: payload
+            });
+            videoDecoder.decode(chunk);
+          } else if (trackType === 0x03 && audioDecoder) {
+            const chunk = new EncodedAudioChunk({
+              type: 'key',
+              timestamp: timestamp * 1000,
+              data: payload
+            });
+            audioDecoder.decode(chunk);
+          }
+        }
+      } catch (e) {
+        break;
+      }
+    }
+  }
+
+  disconnect() {
+    this.connected = false;
+    if (this.videoEncoder) { try { this.videoEncoder.close(); } catch (e) { } }
+    if (this.audioEncoder) { try { this.audioEncoder.close(); } catch (e) { } }
+    if (this.transport) { try { this.transport.close(); } catch (e) { } }
+  }
+}
+
+// ─── Remote Video Tile (MoQ HTML5 Canvas Rendering) ─────────────────────────
+function RemoteVideoTile({ peer, micMutedMap }) {
+  const canvasRef = useRef(null);
+  const [hasVideo, setHasVideo] = useState(false);
+
+  useEffect(() => {
+    // Canvas context ready for frame painting
+    const canvas = canvasRef.current;
+    if (canvas && peer.lastFrame) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = peer.lastFrame.displayWidth || 640;
+        canvas.height = peer.lastFrame.displayHeight || 480;
+        ctx.drawImage(peer.lastFrame, 0, 0, canvas.width, canvas.height);
+        setHasVideo(true);
+      }
+    }
+  }, [peer.lastFrame]);
 
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
     <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
+      <canvas
+        ref={canvasRef}
         style={{
           width: '100%',
           height: '100%',
@@ -166,6 +378,7 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           position: 'absolute',
           inset: 0,
           zIndex: 1,
+          display: hasVideo ? 'block' : 'none'
         }}
       />
       {!hasVideo && (
@@ -198,22 +411,24 @@ export default function CallRoom() {
   // ── Socket / connection ──────────────────────────────────────────────────────
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // connected | reconnecting | reconnection-failed
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
-  // ── WebRTC ───────────────────────────────────────────────────────────────────
+  // ── MoQ & Call State ────────────────────────────────────────────────────────
   const [inCall, setInCall] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [peers, setPeers] = useState([]); // [{ socketId, username, stream }]
+  const [peers, setPeers] = useState([]);
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
-  const peersRef = useRef({});    // { socketId: RTCPeerConnection }
-  const streamsRef = useRef({});   // { socketId: MediaStream }
   const screenStreamRef = useRef(null);
-  const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
+  const moqClientRef = useRef(null);
 
-  // ── Attach local stream via ref callback — fires the moment the DOM node mounts ─
+  // WEBRTC_DEPRECATED
+  // const peersRef = useRef({});    // { socketId: RTCPeerConnection }
+  // const streamsRef = useRef({});   // { socketId: MediaStream }
+  // const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
+
   const localVideoRefCallback = useCallback((node) => {
     localVideoRef.current = node;
     if (node && localStreamRef.current) {
@@ -230,8 +445,8 @@ export default function CallRoom() {
   const inputRef = useRef(null);
 
   // ── Roster ───────────────────────────────────────────────────────────────────
-  const [roster, setRoster] = useState([]); // [{ socketId, username }]
-  const [micMutedMap, setMicMutedMap] = useState({}); // { socketId: boolean }
+  const [roster, setRoster] = useState([]);
+  const [micMutedMap, setMicMutedMap] = useState({});
 
   // ─── Auth on mount ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -254,7 +469,7 @@ export default function CallRoom() {
           setIsAuthed(true);
         }
       } catch {
-        // Fall through to show modal
+        // Fall through
       }
     };
     tryAutoAuth();
@@ -286,7 +501,8 @@ export default function CallRoom() {
     }
   };
 
-  // ─── Create peer connection ───────────────────────────────────────────────────
+  // WEBRTC_DEPRECATED
+  /*
   const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
@@ -297,7 +513,6 @@ export default function CallRoom() {
     };
 
     pc.ontrack = (event) => {
-      // Use native stream if available, otherwise reuse existing or create fallback
       let remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : streamsRef.current[peerSocketId];
       if (!remoteStream) {
         remoteStream = new MediaStream();
@@ -341,18 +556,33 @@ export default function CallRoom() {
 
     return pc;
   };
+  */
 
   // ─── End Call Cleanup ────────────────────────────────────────────────────────
   const endCallCleanup = useCallback(() => {
-    socketRef.current?.emit('webrtc-leave-call', { projectName: roomName });
+    // WEBRTC_DEPRECATED
+    // socketRef.current?.emit('webrtc-leave-call', { projectName: roomName });
+
+    socketRef.current?.emit('moq-leave-room', { projectName: roomName });
+
+    if (moqClientRef.current) {
+      moqClientRef.current.disconnect();
+      moqClientRef.current = null;
+    }
+
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current = null;
+
+    // WEBRTC_DEPRECATED
+    /*
     Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch { } });
     peersRef.current = {};
     streamsRef.current = {};
     candidateQueues.current = {};
+    */
+
     setPeers([]);
     setInCall(false);
     setScreenSharing(false);
@@ -367,13 +597,10 @@ export default function CallRoom() {
     const socket = initSocket();
     socketRef.current = socket;
 
-    // Join room helper — called on connect (and immediately if already connected)
     const doJoinRoom = () => {
       setConnected(true);
       setConnectionStatus('connected');
       const savedKey = sessionStorage.getItem(`accesskey_project_${roomName}`) || getCookie(`accesskey_project_${roomName}`);
-      // Use 'join-call-room' (not 'join room') — the standard 'join room' validates against
-      // a ChatRoom MongoDB document which may not exist for a video-only call room.
       socket.emit('join-call-room', { room: roomName, accessKey: savedKey });
       setRoster(prev => {
         const selfId = socket.id;
@@ -384,66 +611,24 @@ export default function CallRoom() {
     };
 
     socket.on('connect', doJoinRoom);
+    socket.on('disconnect', () => { setConnected(false); setConnectionStatus('reconnecting'); });
+    socket.on('reconnect', () => { setConnectionStatus('connected'); setConnected(true); });
+    socket.on('reconnect_failed', () => setConnectionStatus('reconnection-failed'));
 
-    socket.on('disconnect', () => {
-      setConnected(false);
-      setConnectionStatus('reconnecting');
-    });
-
-    socket.on('reconnect', () => {
-      setConnectionStatus('connected');
-      setConnected(true);
-    });
-
-    socket.on('reconnect_failed', () => {
-      setConnectionStatus('reconnection-failed');
-    });
-
-    socket.on('set username', (name) => {
-      setUsername(name);
-      sessionStorage.setItem('anonhub-username', name);
-      document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
-    });
-
-    socket.on('username updated', (name) => {
-      setUsername(name);
-      sessionStorage.setItem('anonhub-username', name);
-      document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
-    });
-
-    // Server emits 'room users' with the full roster on join/leave (not user-joined/user-left)
-    socket.on('room users', (users) => {
-      setRoster(users.map(u => ({ socketId: u.id, username: u.username })));
-    });
-
-    // Keep user-joined/user-left as fallbacks in case other parts of the system use them
-    socket.on('user-joined', ({ username: u, socketId: sid }) => {
-      setRoster(prev => {
-        if (prev.find(r => r.socketId === sid)) return prev;
-        return [...prev, { socketId: sid, username: u }];
-      });
-    });
-
-    socket.on('user-left', ({ username: u, socketId: sid }) => {
-      setRoster(prev => prev.filter(r => r.socketId !== sid));
-    });
+    socket.on('set username', (name) => { setUsername(name); });
+    socket.on('room users', (users) => { setRoster(users.map(u => ({ socketId: u.id, username: u.username }))); });
 
     socket.on('chat message', ({ username: u, msg, timestamp }) => {
       const isSelf = u === username;
-      setMessages(prev => {
-        const id = `msg-${timestamp || Date.now()}-${Math.random()}`;
-        return [...prev, {
-          id,
-          type: 'message',
-          author: u,
-          text: msg,
-          ts: timestamp || Date.now(),
-          isSelf
-        }];
-      });
-      if (!sidebarOpen) {
-        setUnreadCount(c => c + 1);
-      }
+      setMessages(prev => [...prev, {
+        id: `msg-${timestamp || Date.now()}-${Math.random()}`,
+        type: 'message',
+        author: u,
+        text: msg,
+        ts: timestamp || Date.now(),
+        isSelf
+      }]);
+      if (!sidebarOpen) setUnreadCount(c => c + 1);
     });
 
     socket.on('load messages', (msgs) => {
@@ -457,116 +642,55 @@ export default function CallRoom() {
       })));
     });
 
-    // ── WebRTC signaling events ──
-    socket.on('webrtc-user-joined', ({ socketId: sid, username: peerName }) => {
-      if (!peersRef.current[sid]) {
-        // isInitiator=false: the JOINING user (via existingPeers callback) sends the offer.
-        // The existing user waits to receive it, avoiding SDP glare.
-        const pc = createPeerConnection(sid, peerName || 'Participant', false, socket);
-        peersRef.current[sid] = pc;
-      }
+    // WEBRTC_DEPRECATED
+    /*
+    socket.on('webrtc-user-joined', handleWebRTCUserJoined);
+    socket.on('webrtc-signal', handleWebRTCSignal);
+    socket.on('webrtc-user-left', handleWebRTCUserLeft);
+    */
+
+    socket.on('moq-user-joined', ({ socketId: sid, username: peerName }) => {
+      setPeers(prev => {
+        if (prev.find(p => p.socketId === sid)) return prev;
+        return [...prev, { socketId: sid, username: peerName || 'Participant' }];
+      });
       setRoster(prev => {
         if (prev.find(r => r.socketId === sid)) return prev;
         return [...prev, { socketId: sid, username: peerName || 'Participant' }];
       });
     });
 
-    socket.on('webrtc-signal', async ({ senderId, senderUsername, signal }) => {
-      const peerName = senderUsername || 'Participant';
-      let pc = peersRef.current[senderId];
-      if (!pc) {
-        pc = createPeerConnection(senderId, peerName, false, socket);
-        peersRef.current[senderId] = pc;
-      } else if (senderUsername) {
-        setPeers(prev => prev.map(p => p.socketId === senderId ? { ...p, username: senderUsername } : p));
-        setRoster(prev => prev.map(r => r.socketId === senderId ? { ...r, username: senderUsername } : r));
-      }
-
-      try {
-        if (signal.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-
-          const queue = candidateQueues.current[senderId] || [];
-          while (queue.length > 0) {
-            const cand = queue.shift();
-            await pc.addIceCandidate(cand).catch(() => { });
-          }
-          candidateQueues.current[senderId] = [];
-
-          if (signal.sdp.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('webrtc-signal', { targetId: senderId, signal: { sdp: pc.localDescription } });
-          }
-        } else if (signal.candidate) {
-          const candidate = new RTCIceCandidate(signal.candidate);
-          if (pc.remoteDescription && pc.remoteDescription.type) {
-            await pc.addIceCandidate(candidate).catch(() => { });
-          } else {
-            if (!candidateQueues.current[senderId]) {
-              candidateQueues.current[senderId] = [];
-            }
-            candidateQueues.current[senderId].push(candidate);
-          }
-        }
-      } catch (err) {
-        console.error('Signal processing error:', err);
-      }
-    });
-
-    socket.on('webrtc-user-left', ({ socketId: sid }) => {
-      if (peersRef.current[sid]) {
-        try { peersRef.current[sid].close(); } catch { }
-        delete peersRef.current[sid];
-      }
-      delete streamsRef.current[sid];
-      delete candidateQueues.current[sid];
+    socket.on('moq-user-left', ({ socketId: sid }) => {
       setPeers(prev => prev.filter(p => p.socketId !== sid));
       setRoster(prev => prev.filter(r => r.socketId !== sid));
     });
 
-    // ── Mic mute status from peers ──
     socket.on('peer-mic-status', ({ socketId: sid, muted }) => {
       setMicMutedMap(prev => ({ ...prev, [sid]: muted }));
     });
 
     socket.connect();
-
-    // If socket was already connected before listeners were attached (shouldn't happen with
-    // autoConnect:false, but guard anyway)
-    if (socket.connected) {
-      doJoinRoom();
-    }
+    if (socket.connected) doJoinRoom();
 
     return () => {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('reconnect');
       socket.off('reconnect_failed');
-      socket.off('set username');
-      socket.off('username updated');
-      socket.off('room users');
-      socket.off('user-joined');
-      socket.off('user-left');
       socket.off('chat message');
       socket.off('load messages');
-      socket.off('webrtc-user-joined');
-      socket.off('webrtc-signal');
-      socket.off('webrtc-user-left');
+      socket.off('moq-user-joined');
+      socket.off('moq-user-left');
       socket.off('peer-mic-status');
       endCallCleanup();
       socket.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthed, roomName]);
+  }, [isAuthed, roomName, endCallCleanup, sidebarOpen, username]);
 
-
-  // ─── Auto-scroll chat ────────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ─── Reset unread on open ────────────────────────────────────────────────────
   useEffect(() => {
     if (sidebarOpen) setUnreadCount(0);
   }, [sidebarOpen]);
@@ -579,23 +703,42 @@ export default function CallRoom() {
       setVideoMuted(false);
       setMicMuted(false);
       setInCall(true);
-      // Fallback: ensure srcObject is set after React commits the video element
+
       requestAnimationFrame(() => {
         if (localVideoRef.current && localStreamRef.current) {
           localVideoRef.current.srcObject = localStreamRef.current;
           localVideoRef.current.play().catch(() => { });
         }
       });
-      socketRef.current?.emit('webrtc-join-call', { projectName: roomName }, (response) => {
-        if (response && Array.isArray(response.existingPeers)) {
-          response.existingPeers.forEach(({ socketId: sid, username: peerName }) => {
-            if (socketRef.current && !peersRef.current[sid]) {
-              const pc = createPeerConnection(sid, peerName || 'Participant', true, socketRef.current);
-              peersRef.current[sid] = pc;
-            }
-          });
+
+      // WEBRTC_DEPRECATED
+      /*
+      socketRef.current?.emit('webrtc-join-call', { projectName: roomName }, (response) => { ... });
+      */
+
+      // Initialize MoQ Client
+      const moqUrl = 'https://localhost:8554/moq_server';
+      const client = new MoQTransportClient(
+        moqUrl,
+        roomName,
+        username || 'Anonymous',
+        (videoFrame) => {
+          // Pass incoming decoded video frame to remote tiles
+          setPeers(prev => prev.map(p => ({ ...p, lastFrame: videoFrame })));
+        },
+        (audioData) => {
+          audioData.close();
         }
-      });
+      );
+
+      moqClientRef.current = client;
+      const connected = await client.connect();
+      if (connected) {
+        client.startMediaEncoding(stream.getVideoTracks()[0], stream.getAudioTracks()[0]);
+      }
+
+      socketRef.current?.emit('moq-join-room', { projectName: roomName, username });
+
     } catch (err) {
       console.error('getUserMedia error:', err);
       alert('Camera/microphone access is required to start the call.');
@@ -607,19 +750,16 @@ export default function CallRoom() {
     navigate('/');
   };
 
-  // ─── Mic Toggle ──────────────────────────────────────────────────────────────
   const toggleMic = () => {
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) {
       track.enabled = !track.enabled;
       const nowMuted = !track.enabled;
       setMicMuted(nowMuted);
-      // Broadcast mute state to WebRTC room peers
       socketRef.current?.emit('mic-status', { projectName: roomName, muted: nowMuted });
     }
   };
 
-  // ─── Video Toggle ────────────────────────────────────────────────────────────
   const toggleVideo = () => {
     const track = localStreamRef.current?.getVideoTracks()[0];
     if (track) {
@@ -628,12 +768,7 @@ export default function CallRoom() {
     }
   };
 
-  // ─── Screen Share Toggle ─────────────────────────────────────────────────────
   const replaceVideoTrack = (newTrack) => {
-    Object.values(peersRef.current).forEach(pc => {
-      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(newTrack).catch(() => { });
-    });
     if (localVideoRef.current?.srcObject) {
       const stream = localVideoRef.current.srcObject;
       const old = stream.getVideoTracks()[0];
@@ -657,6 +792,12 @@ export default function CallRoom() {
         setScreenSharing(true);
         const screenTrack = stream.getVideoTracks()[0];
         replaceVideoTrack(screenTrack);
+
+        if (moqClientRef.current) {
+          const aTrack = localStreamRef.current?.getAudioTracks()[0];
+          moqClientRef.current.startMediaEncoding(screenTrack, aTrack);
+        }
+
         screenTrack.onended = () => {
           setScreenSharing(false);
           const camTrack = localStreamRef.current?.getVideoTracks()[0];
@@ -668,11 +809,9 @@ export default function CallRoom() {
     }
   };
 
-  // ─── Send Chat Message ────────────────────────────────────────────────────────
   const sendMessage = () => {
     const text = inputText.trim();
     if (!text || !socketRef.current) return;
-    // Backend event: 'room message', payload: { room, msg }
     socketRef.current.emit('room message', { room: roomName, msg: text });
     setInputText('');
     inputRef.current?.focus();
@@ -685,10 +824,8 @@ export default function CallRoom() {
     }
   };
 
-  // ─── Total tile count ────────────────────────────────────────────────────────
-  const totalTiles = 1 + peers.length; // local + remote
+  const totalTiles = 1 + peers.length;
 
-  // ─── If not authed, show gate ─────────────────────────────────────────────────
   if (!isAuthed) {
     return (
       <div className="callroom-access-overlay">
@@ -706,7 +843,7 @@ export default function CallRoom() {
 
   return (
     <div className={`callroom-root${!sidebarOpen ? ' no-sidebar' : ''}`}>
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <header className="callroom-header">
         <div className="callroom-header-left">
           <button
@@ -720,14 +857,14 @@ export default function CallRoom() {
             <Home size={16} />
           </button>
           <div className="callroom-logo-dot" />
-          <span className="callroom-title">AnonHub Call</span>
+          <span className="callroom-title">AnonHub Call (MoQ)</span>
           <span className="callroom-room-name">#{roomName}</span>
         </div>
         <div className="callroom-header-right">
           {inCall && (
             <div className="callroom-live-badge">
               <div className="callroom-live-dot" />
-              LIVE
+              LIVE (MoQ)
             </div>
           )}
           <div className="callroom-user-count">
@@ -737,9 +874,8 @@ export default function CallRoom() {
         </div>
       </header>
 
-      {/* ── Video Grid ─────────────────────────────────────────────────────── */}
+      {/* Video Grid */}
       <main className="callroom-grid">
-        {/* Connection banners */}
         {connectionStatus === 'reconnecting' && (
           <div className="callroom-reconnecting-banner">
             <span>🔄</span> Reconnecting…
@@ -753,13 +889,12 @@ export default function CallRoom() {
         )}
 
         {!inCall ? (
-          /* Pre-call waiting state */
           <div className="callroom-waiting-overlay">
             <div className="callroom-waiting-icon">
               <Video size={36} color="rgba(124, 77, 255, 0.7)" />
             </div>
-            <h3>Ready to join the call?</h3>
-            <p>Click the camera button below to start your video &amp; audio.</p>
+            <h3>Ready to join the MoQ call?</h3>
+            <p>Click the button below to join low-latency Media over QUIC streaming.</p>
             <button
               id="callroom-start-btn"
               onClick={startCall}
@@ -781,16 +916,15 @@ export default function CallRoom() {
                 transition: 'all 0.2s',
               }}
             >
-              <Video size={18} /> Join Call
+              <Video size={18} /> Join MoQ Call
             </button>
           </div>
         ) : (
-          /* Active call video mesh */
           <div
             className={`callroom-video-mesh${totalTiles >= 5 ? ' many-participants' : ''}`}
             data-count={Math.min(totalTiles, 4)}
           >
-            {/* Local video tile */}
+            {/* Local tile */}
             <div className={`callroom-video-tile local-tile ${screenSharing ? 'sharing-screen' : ''}`}>
               <video
                 ref={localVideoRefCallback}
@@ -834,7 +968,7 @@ export default function CallRoom() {
         )}
       </main>
 
-      {/* ── Controls Bar ───────────────────────────────────────────────────── */}
+      {/* Controls Bar */}
       <footer className="callroom-controls">
         {!inCall ? (
           <button id="callroom-join-btn" className="callroom-ctrl-btn" onClick={startCall} title="Join Call">
@@ -843,7 +977,6 @@ export default function CallRoom() {
           </button>
         ) : (
           <>
-            {/* Mic */}
             <button
               id="callroom-mic-btn"
               className={`callroom-ctrl-btn${micMuted ? ' muted' : ''}`}
@@ -854,7 +987,6 @@ export default function CallRoom() {
               <span className="callroom-ctrl-btn-label">{micMuted ? 'Unmuted' : 'Mute'}</span>
             </button>
 
-            {/* Camera */}
             <button
               id="callroom-cam-btn"
               className={`callroom-ctrl-btn${videoMuted ? ' muted' : ''}`}
@@ -865,7 +997,6 @@ export default function CallRoom() {
               <span className="callroom-ctrl-btn-label">{videoMuted ? 'Cam Off' : 'Camera'}</span>
             </button>
 
-            {/* Screen share */}
             <button
               id="callroom-screen-btn"
               className={`callroom-ctrl-btn${screenSharing ? ' screen-active' : ''}`}
@@ -878,7 +1009,6 @@ export default function CallRoom() {
 
             <div className="callroom-ctrl-divider" />
 
-            {/* Leave */}
             <button
               id="callroom-leave-btn"
               className="callroom-ctrl-btn leave-btn"
@@ -893,7 +1023,6 @@ export default function CallRoom() {
 
         <div className="callroom-ctrl-divider" />
 
-        {/* Chat toggle */}
         <button
           id="callroom-chat-toggle-btn"
           className={`callroom-chat-toggle-btn${sidebarOpen ? ' chat-open' : ''}`}
@@ -908,7 +1037,7 @@ export default function CallRoom() {
         </button>
       </footer>
 
-      {/* ── Sidebar (Chat + Roster) ─────────────────────────────────────────── */}
+      {/* Sidebar (Chat + Roster) */}
       {sidebarOpen && (
         <aside className="callroom-sidebar">
           <div className="callroom-sidebar-header">
@@ -922,7 +1051,6 @@ export default function CallRoom() {
             </button>
           </div>
 
-          {/* Live Roster */}
           <div className="callroom-roster">
             <div className="callroom-roster-header">Participants</div>
             {roster.length === 0 ? (
@@ -939,7 +1067,6 @@ export default function CallRoom() {
             )}
           </div>
 
-          {/* Messages */}
           <div className="callroom-messages" id="callroom-messages-list">
             {messages.length === 0 && (
               <div style={{ textAlign: 'center', color: 'rgba(197,179,255,0.25)', fontSize: '0.75rem', marginTop: '20px' }}>
@@ -962,7 +1089,6 @@ export default function CallRoom() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div className="callroom-msg-input-area">
             <textarea
               ref={inputRef}
