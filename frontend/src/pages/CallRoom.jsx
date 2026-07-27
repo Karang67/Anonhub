@@ -31,7 +31,7 @@
  *    - Track Type: 0x01 = Video Keyframe, 0x02 = Video Deltaframe, 0x03 = Audio
  *    - Timestamp: Epoch offset in milliseconds (Float64)
  *    - Payload Length: Big-Endian 32-bit unsigned integer
- *    - Payload: WebCodecs compressed H.264/VP8 or Opus chunk bytes
+ *    - Payload: WebCodecs compressed VP8/H.264 or Opus chunk bytes
  * ============================================================================
  */
 
@@ -116,13 +116,11 @@ class MoQTransportClient {
         this.listenIncomingStreams();
         return true;
       } catch (err) {
-        console.warn('MediaMTX WebTransport server unreachable on localhost:8554. Using Socket.IO MoQ packet relay:', err);
+        console.warn('MediaMTX WebTransport unreachable on localhost:8554. Using Socket.IO MoQ packet relay:', err);
       }
     }
 
     this.mode = 'SocketRelay';
-    console.log('MoQ CallRoom active mode: Socket.IO binary stream relay');
-
     if (this.socket) {
       this.socket.on('moq-packet', ({ senderId, packet }) => {
         this.processIncomingPacket(senderId, new Uint8Array(packet));
@@ -145,7 +143,7 @@ class MoQTransportClient {
             },
             error: (e) => console.error(`CallRoom VideoDecoder error for peer ${senderId}:`, e)
           });
-          videoDecoder.configure({ codec: 'avc1.42E01E' });
+          videoDecoder.configure({ codec: 'vp8' });
         } catch (e) {
           console.error('CallRoom VideoDecoder config error:', e);
         }
@@ -213,7 +211,7 @@ class MoQTransportClient {
       }
     }
 
-    // Configure VideoEncoder (H.264 Baseline)
+    // Configure VideoEncoder (VP8)
     if (videoTrack && typeof VideoEncoder !== 'undefined') {
       try {
         const settings = videoTrack.getSettings();
@@ -222,7 +220,7 @@ class MoQTransportClient {
           error: (err) => console.error('VideoEncoder error:', err)
         });
         this.videoEncoder.configure({
-          codec: 'avc1.42E01E',
+          codec: 'vp8',
           width: settings.width || 1280,
           height: settings.height || 720,
           bitrate: 2000000,
@@ -230,9 +228,15 @@ class MoQTransportClient {
         });
 
         if (typeof MediaStreamTrackProcessor !== 'undefined') {
-          const processor = new MediaStreamTrackProcessor({ track: videoTrack });
-          const reader = processor.readable.getReader();
-          this.processVideoFrames(reader);
+          try {
+            const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+            const reader = processor.readable.getReader();
+            this.processVideoFrames(reader);
+          } catch (e) {
+            this.fallbackVideoFrames(videoTrack);
+          }
+        } else {
+          this.fallbackVideoFrames(videoTrack);
         }
       } catch (e) {
         console.error('VideoEncoder initialization error:', e);
@@ -254,14 +258,54 @@ class MoQTransportClient {
         });
 
         if (typeof MediaStreamTrackProcessor !== 'undefined') {
-          const processor = new MediaStreamTrackProcessor({ track: audioTrack });
-          const reader = processor.readable.getReader();
-          this.processAudioData(reader);
+          try {
+            const processor = new MediaStreamTrackProcessor({ track: audioTrack });
+            const reader = processor.readable.getReader();
+            this.processAudioData(reader);
+          } catch (e) {
+            // Audio processor fallback
+          }
         }
       } catch (e) {
         console.error('AudioEncoder initialization error:', e);
       }
     }
+  }
+
+  fallbackVideoFrames(videoTrack) {
+    const video = document.createElement('video');
+    video.srcObject = new MediaStream([videoTrack]);
+    video.muted = true;
+    video.play().catch(() => {});
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    let frameIdx = 0;
+
+    const captureLoop = () => {
+      if (!this.connected) return;
+      if (video.readyState >= 2) {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+          try {
+            const frame = new VideoFrame(canvas, { timestamp: performance.now() * 1000 });
+            const keyFrame = frameIdx % 30 === 0;
+            this.videoEncoder.encode(frame, { keyFrame });
+            frame.close();
+            frameIdx++;
+          } catch (e) {
+            console.warn('CallRoom VideoFrame fallback error:', e);
+          }
+        }
+      }
+      setTimeout(() => requestAnimationFrame(captureLoop), 1000 / 30);
+    };
+
+    video.onloadedmetadata = () => captureLoop();
+    if (video.readyState >= 2) captureLoop();
   }
 
   async processVideoFrames(reader) {
@@ -271,7 +315,7 @@ class MoQTransportClient {
         const { value: frame, done } = await reader.read();
         if (done || !frame) break;
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
-          const keyFrame = frameIdx % 60 === 0;
+          const keyFrame = frameIdx % 30 === 0;
           this.videoEncoder.encode(frame, { keyFrame });
           frameIdx++;
         }
@@ -421,30 +465,14 @@ class MoQTransportClient {
   }
 }
 
-// ─── Remote Video Tile (MoQ HTML5 Canvas Rendering) ─────────────────────────
-function RemoteVideoTile({ peer, micMutedMap }) {
-  const canvasRef = useRef(null);
-  const [hasVideo, setHasVideo] = useState(false);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas && peer.lastFrame) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        canvas.width = peer.lastFrame.displayWidth || 640;
-        canvas.height = peer.lastFrame.displayHeight || 480;
-        ctx.drawImage(peer.lastFrame, 0, 0, canvas.width, canvas.height);
-        setHasVideo(true);
-      }
-    }
-  }, [peer.lastFrame]);
-
+// ─── Remote Video Tile (MoQ Canvas Rendering) ──────────────────────────────
+function RemoteVideoTile({ peer, micMutedMap, onCanvasRef }) {
   const isMuted = micMutedMap?.[peer.socketId];
 
   return (
     <div className="callroom-video-tile remote-tile" style={{ position: 'relative' }}>
       <canvas
-        ref={canvasRef}
+        ref={onCanvasRef}
         style={{
           width: '100%',
           height: '100%',
@@ -453,15 +481,8 @@ function RemoteVideoTile({ peer, micMutedMap }) {
           position: 'absolute',
           inset: 0,
           zIndex: 1,
-          display: hasVideo ? 'block' : 'none'
         }}
       />
-      {!hasVideo && (
-        <div className="callroom-video-avatar" style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#0d0f1a' }}>
-          <div className="callroom-avatar-circle">{getInitials(peer.username)}</div>
-          <div className="callroom-avatar-name">{peer.username}</div>
-        </div>
-      )}
       <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
         <span className={`callroom-mic-indicator ${isMuted ? 'muted' : ''}`}>
           {isMuted ? <MicOff size={10} /> : <Mic size={10} />}
@@ -499,6 +520,7 @@ export default function CallRoom() {
   const localVideoRef = useRef(null);
   const screenStreamRef = useRef(null);
   const moqClientRef = useRef(null);
+  const peerCanvasRefs = useRef({});
 
   // WEBRTC_DEPRECATED
   // const peersRef = useRef({});    // { socketId: RTCPeerConnection }
@@ -602,9 +624,6 @@ export default function CallRoom() {
     // WEBRTC_DEPRECATED
     /*
     Object.values(peersRef.current).forEach(pc => { try { pc.close(); } catch { } });
-    peersRef.current = {};
-    streamsRef.current = {};
-    candidateQueues.current = {};
     */
 
     setPeers([]);
@@ -748,15 +767,18 @@ export default function CallRoom() {
         username || 'Anonymous',
         socketRef.current,
         (peerId, videoFrame) => {
-          setPeers(prev => {
-            const idx = prev.findIndex(p => p.socketId === peerId);
-            if (idx !== -1) {
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], lastFrame: videoFrame };
-              return updated;
+          const canvas = peerCanvasRefs.current[peerId];
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const width = videoFrame.displayWidth || 640;
+              const height = videoFrame.displayHeight || 480;
+              if (canvas.width !== width) canvas.width = width;
+              if (canvas.height !== height) canvas.height = height;
+              ctx.drawImage(videoFrame, 0, 0, width, height);
             }
-            return [...prev, { socketId: peerId, username: 'Participant', lastFrame: videoFrame }];
-          });
+          }
+          videoFrame.close();
         },
         (peerId, audioData) => {
           audioData.close();
@@ -994,7 +1016,14 @@ export default function CallRoom() {
 
             {/* Remote video tiles */}
             {peers.map(peer => (
-              <RemoteVideoTile key={peer.socketId} peer={peer} micMutedMap={micMutedMap} />
+              <RemoteVideoTile
+                key={peer.socketId}
+                peer={peer}
+                micMutedMap={micMutedMap}
+                onCanvasRef={(node) => {
+                  if (node) peerCanvasRefs.current[peer.socketId] = node;
+                }}
+              />
             ))}
           </div>
         )}
