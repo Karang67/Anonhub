@@ -567,11 +567,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   }, [socket]);
 
   const handleUserJoined = useCallback(({ socketId, username: peerName }) => {
+    if (!socketId || socketId === 'remote-peer' || socketId === socket?.id) return;
     setPeers(prev => {
       if (prev.find(p => p.socketId === socketId)) return prev;
       return [...prev, { socketId, username: peerName || 'Participant' }];
     });
-  }, []);
+  }, [socket]);
 
   const startCall = async () => {
     try {
@@ -606,11 +607,16 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         username || 'anonymous',
         socket,
         (peerId, videoFrame) => {
-          // Ensure peer exists in state
-          handleUserJoined({ socketId: peerId, username: 'Participant' });
+          if (peerId && peerId !== 'remote-peer' && peerId !== socket?.id) {
+            handleUserJoined({ socketId: peerId, username: 'Participant' });
+          }
 
-          // Draw videoFrame directly onto the peer canvas element
-          const canvas = peerCanvasRefs.current[peerId];
+          let canvas = peerCanvasRefs.current[peerId];
+          if (!canvas) {
+            const firstId = Object.keys(peerCanvasRefs.current)[0];
+            if (firstId) canvas = peerCanvasRefs.current[firstId];
+          }
+
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
@@ -624,7 +630,9 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           videoFrame.close();
         },
         (peerId, audioData) => {
-          handleUserJoined({ socketId: peerId, username: 'Participant' });
+          if (peerId && peerId !== 'remote-peer' && peerId !== socket?.id) {
+            handleUserJoined({ socketId: peerId, username: 'Participant' });
+          }
           audioData.close();
         }
       );
@@ -928,7 +936,8 @@ function MoQVideoCard({ peer, isMicMuted, onCanvasRef }) {
           height: '100%',
           objectFit: 'cover',
           zIndex: 1,
-          background: '#0d0f1a'
+          background: '#0d0f1a',
+          display: 'block'
         }}
       />
       <div className="participant-badge" style={{ position: 'absolute', bottom: 8, left: 8, zIndex: 3 }}>

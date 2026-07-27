@@ -538,6 +538,7 @@ function RemoteVideoTile({ peer, micMutedMap, onCanvasRef }) {
           position: 'absolute',
           inset: 0,
           zIndex: 1,
+          display: 'block'
         }}
       />
       <div className="callroom-participant-badge" style={{ zIndex: 3 }}>
@@ -592,13 +593,14 @@ export default function CallRoom() {
   }, []);
 
   const handleUserJoined = useCallback(({ socketId, username: peerName }) => {
+    if (!socketId || socketId === 'remote-peer' || socketId === socketRef.current?.id) return;
     setPeers(prev => {
       if (prev.find(p => p.socketId === socketId)) return prev;
       return [...prev, { socketId, username: peerName || 'Participant' }];
     });
     setRoster(prev => {
       if (prev.find(r => r.socketId === socketId)) return prev;
-      return [...prev, { socketId: sid, username: peerName || 'Participant' }];
+      return [...prev, { socketId, username: peerName || 'Participant' }];
     });
   }, []);
 
@@ -825,8 +827,16 @@ export default function CallRoom() {
         username || 'Anonymous',
         socketRef.current,
         (peerId, videoFrame) => {
-          handleUserJoined({ socketId: peerId, username: 'Participant' });
-          const canvas = peerCanvasRefs.current[peerId];
+          if (peerId && peerId !== 'remote-peer' && peerId !== socketRef.current?.id) {
+            handleUserJoined({ socketId: peerId, username: 'Participant' });
+          }
+
+          let canvas = peerCanvasRefs.current[peerId];
+          if (!canvas) {
+            const firstId = Object.keys(peerCanvasRefs.current)[0];
+            if (firstId) canvas = peerCanvasRefs.current[firstId];
+          }
+
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
@@ -840,7 +850,9 @@ export default function CallRoom() {
           videoFrame.close();
         },
         (peerId, audioData) => {
-          handleUserJoined({ socketId: peerId, username: 'Participant' });
+          if (peerId && peerId !== 'remote-peer' && peerId !== socketRef.current?.id) {
+            handleUserJoined({ socketId: peerId, username: 'Participant' });
+          }
           audioData.close();
         }
       );
