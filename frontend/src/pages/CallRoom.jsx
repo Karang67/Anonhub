@@ -136,7 +136,8 @@ class MoQTransportClient {
     this.mode = 'SocketRelay';
     if (this.socket) {
       this.socket.on('moq-packet', ({ senderId, packet }) => {
-        this.processIncomingPacket(senderId, new Uint8Array(packet));
+        const rawBytes = packet instanceof ArrayBuffer ? new Uint8Array(packet) : new Uint8Array(packet);
+        this.processIncomingPacket(senderId, rawBytes);
       });
     }
 
@@ -468,16 +469,17 @@ class MoQTransportClient {
   }
 
   async sendPacket(packet) {
+    const rawBuffer = packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength);
     if (this.mode === 'WebTransport' && this.videoWriter) {
       try {
         await this.videoWriter.write(packet);
       } catch (e) {
         if (this.socket) {
-          this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
+          this.socket.emit('moq-packet', { projectName: this.roomName, packet: rawBuffer });
         }
       }
     } else if (this.socket) {
-      this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
+      this.socket.emit('moq-packet', { projectName: this.roomName, packet: rawBuffer });
     }
   }
 
@@ -827,10 +829,16 @@ export default function CallRoom() {
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: true
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: true
+        });
+      } catch (e) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
       localStreamRef.current = stream;
       setVideoMuted(false);
       setMicMuted(false);
@@ -904,7 +912,7 @@ export default function CallRoom() {
 
     } catch (err) {
       console.error('getUserMedia error:', err);
-      alert('Camera/microphone access is required to start the call.');
+      alert('Microphone/camera access is required to start the call.');
     }
   };
 
@@ -980,7 +988,100 @@ export default function CallRoom() {
 
   const toggleScreenShare = async () => {
     if (!inCall) {
-      await startCall();
+      try {
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: true
+          });
+        } catch (e) {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        }
+
+        screenStreamRef.current = stream;
+        globalCallSession.screenStream = stream;
+        globalCallSession.screenSharing = true;
+        setInCall(true);
+        setScreenSharing(true);
+        setShowScreenTip(true);
+
+        const screenTrack = stream.getVideoTracks()[0];
+
+        const moqUrl = 'https://localhost:8554/moq_server';
+        const client = new MoQTransportClient(
+          moqUrl,
+          roomName,
+          username || 'Anonymous',
+          socketRef.current,
+          (peerId, videoFrame) => {
+            if (peerId && peerId !== 'remote-peer' && peerId !== socketRef.current?.id) {
+              handleUserJoined({ socketId: peerId, username: 'Participant' });
+            }
+
+            let canvas = peerCanvasRefs.current[peerId];
+            if (!canvas) {
+              const firstId = Object.keys(peerCanvasRefs.current)[0];
+              if (firstId) canvas = peerCanvasRefs.current[firstId];
+            }
+
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                const width = videoFrame.displayWidth || 480;
+                const height = videoFrame.displayHeight || 360;
+                if (canvas.width !== width) canvas.width = width;
+                if (canvas.height !== height) canvas.height = height;
+                ctx.drawImage(videoFrame, 0, 0, width, height);
+              }
+            }
+            videoFrame.close();
+          },
+          (peerId, audioData) => {
+            if (peerId && peerId !== 'remote-peer' && peerId !== socketRef.current?.id) {
+              handleUserJoined({ socketId: peerId, username: 'Participant' });
+            }
+            audioData.close();
+          }
+        );
+
+        moqClientRef.current = client;
+        await client.connect();
+        setTransportMode(client.mode === 'WebTransport' ? 'MoQ (QUIC)' : 'MoQ (Relay)');
+
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+        const audioTrack = micStream ? micStream.getAudioTracks()[0] : null;
+        if (micStream) localStreamRef.current = micStream;
+
+        client.startMediaEncoding(screenTrack, audioTrack);
+        replaceVideoTrack(screenTrack);
+
+        globalCallSession.setSession({
+          roomName,
+          localStream: micStream,
+          screenStream: stream,
+          moqSession: client,
+          socket: socketRef.current
+        });
+
+        socketRef.current?.emit('moq-join-room', { projectName: roomName, username }, (response) => {
+          if (response && Array.isArray(response.existingPeers)) {
+            response.existingPeers.forEach(({ socketId, username: peerName }) => {
+              handleUserJoined({ socketId, username: peerName });
+            });
+          }
+        });
+
+        screenTrack.onended = () => {
+          globalCallSession.stopScreenShare();
+          setScreenSharing(false);
+          setShowScreenTip(false);
+        };
+        return;
+      } catch (err) {
+        console.error('Direct screen share error:', err);
+        return;
+      }
     }
 
     if (screenSharing) {
@@ -1137,6 +1238,32 @@ export default function CallRoom() {
           </div>
         )}
 
+        {/* ALWAYS VISIBLE TOP BAR */}
+        <div className="callroom-top-action-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 16px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', margin: '8px 16px', border: '1px solid rgba(124, 77, 255, 0.3)', zIndex: 10 }}>
+          {!inCall ? (
+            <>
+              <button id="callroom-start-btn" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <Video size={16} /> Join Video Call
+              </button>
+              <button onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <MonitorUp size={16} /> Share Laptop Screen
+              </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.82rem', color: '#a78bfa', fontWeight: 600 }}>Active Call Session (#{roomName})</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={toggleScreenShare} style={{ padding: '6px 14px', background: screenSharing ? '#dc2626' : '#2563eb', color: '#fff', borderRadius: '6px', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <MonitorUp size={14} /> {screenSharing ? 'Stop Sharing' : 'Share Screen'}
+                </button>
+                <button onClick={leaveCall} style={{ padding: '6px 14px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <PhoneOff size={14} /> Leave
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {!inCall ? (
           <div className="callroom-waiting-overlay">
             <div className="callroom-waiting-icon">
@@ -1144,51 +1271,6 @@ export default function CallRoom() {
             </div>
             <h3>Ready to join the MoQ call?</h3>
             <p>Click below to join or share your laptop screen directly.</p>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-              <button
-                id="callroom-start-btn"
-                onClick={startCall}
-                style={{
-                  padding: '12px 28px',
-                  borderRadius: '28px',
-                  background: 'linear-gradient(135deg, #7c4dff, #5c35cc)',
-                  border: 'none',
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 8px 28px rgba(124, 77, 255, 0.4)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  letterSpacing: '0.05em',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <Video size={18} /> Join MoQ Call
-              </button>
-              <button
-                onClick={toggleScreenShare}
-                style={{
-                  padding: '12px 28px',
-                  borderRadius: '28px',
-                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                  border: 'none',
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 8px 28px rgba(37, 99, 235, 0.4)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  letterSpacing: '0.05em',
-                  transition: 'all 0.2s',
-                }}
-              >
-                <MonitorUp size={18} /> Share Laptop Screen
-              </button>
-            </div>
           </div>
         ) : (
           <div

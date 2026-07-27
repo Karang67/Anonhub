@@ -138,7 +138,8 @@ class MoQSession {
     this.mode = 'SocketRelay';
     if (this.socket) {
       this.socket.on('moq-packet', ({ senderId, packet }) => {
-        this.processIncomingPacket(senderId, new Uint8Array(packet));
+        const rawBytes = packet instanceof ArrayBuffer ? new Uint8Array(packet) : new Uint8Array(packet);
+        this.processIncomingPacket(senderId, rawBytes);
       });
     }
 
@@ -471,16 +472,17 @@ class MoQSession {
   }
 
   async sendPacket(packet) {
+    const rawBuffer = packet.buffer.slice(packet.byteOffset, packet.byteOffset + packet.byteLength);
     if (this.mode === 'WebTransport' && this.videoWriter) {
       try {
         await this.videoWriter.write(packet);
       } catch (e) {
         if (this.socket) {
-          this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
+          this.socket.emit('moq-packet', { projectName: this.roomName, packet: rawBuffer });
         }
       }
     } else if (this.socket) {
-      this.socket.emit('moq-packet', { projectName: this.roomName, packet: packet.buffer });
+      this.socket.emit('moq-packet', { projectName: this.roomName, packet: rawBuffer });
     }
   }
 
@@ -628,10 +630,17 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: true
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: true
+        });
+      } catch (e) {
+        // Microphone audio fallback if camera is unavailable
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
       localStreamRef.current = stream;
       setVideoMuted(false);
       setMicMuted(false);
@@ -710,7 +719,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
     } catch (err) {
       console.error('Failed to get media devices:', err);
-      alert('Camera/microphone access is required to start a call.');
+      alert('Microphone/camera access is required to join.');
     }
   };
 
@@ -816,7 +825,104 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const toggleScreenShare = async () => {
     if (!inCall) {
-      await startCall();
+      try {
+        // Direct screen sharing start without requiring camera first
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: true
+          });
+        } catch (e) {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        }
+
+        screenStreamRef.current = stream;
+        globalCallSession.screenStream = stream;
+        globalCallSession.screenSharing = true;
+        setInCall(true);
+        setScreenSharing(true);
+        setShowScreenTip(true);
+
+        const screenTrack = stream.getVideoTracks()[0];
+
+        // Init MoQ session for screen share
+        const moqServerUrl = 'https://localhost:8554/moq_server';
+        const session = new MoQSession(
+          moqServerUrl,
+          projectName,
+          username || 'anonymous',
+          socket,
+          (peerId, videoFrame) => {
+            if (peerId && peerId !== 'remote-peer' && peerId !== socket?.id) {
+              handleUserJoined({ socketId: peerId, username: 'Participant' });
+            }
+
+            let canvas = peerCanvasRefs.current[peerId];
+            if (!canvas) {
+              const firstId = Object.keys(peerCanvasRefs.current)[0];
+              if (firstId) canvas = peerCanvasRefs.current[firstId];
+            }
+
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                const width = videoFrame.displayWidth || 640;
+                const height = videoFrame.displayHeight || 480;
+                if (canvas.width !== width) canvas.width = width;
+                if (canvas.height !== height) canvas.height = height;
+                ctx.drawImage(videoFrame, 0, 0, width, height);
+              }
+            }
+            videoFrame.close();
+          },
+          (peerId, audioData) => {
+            if (peerId && peerId !== 'remote-peer' && peerId !== socket?.id) {
+              handleUserJoined({ socketId: peerId, username: 'Participant' });
+            }
+            audioData.close();
+          }
+        );
+
+        moqSessionRef.current = session;
+        await session.connect();
+        setTransportMode(session.mode === 'WebTransport' ? 'MoQ (QUIC)' : 'MoQ (Relay)');
+
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+        const audioTrack = micStream ? micStream.getAudioTracks()[0] : null;
+        if (micStream) localStreamRef.current = micStream;
+
+        session.initEncoders(screenTrack, audioTrack);
+        replaceVideoTrack(screenTrack);
+
+        globalCallSession.setSession({
+          roomName: projectName,
+          localStream: micStream,
+          screenStream: stream,
+          moqSession: session,
+          socket
+        });
+
+        if (socket) {
+          socket.emit('moq-join-room', { projectName, username }, (response) => {
+            if (response && Array.isArray(response.existingPeers)) {
+              response.existingPeers.forEach(({ socketId, username: peerName }) => {
+                handleUserJoined({ socketId, username: peerName });
+              });
+            }
+          });
+        }
+
+        screenTrack.onended = () => {
+          globalCallSession.stopScreenShare();
+          setScreenSharing(false);
+          setShowScreenTip(false);
+        };
+        return;
+      } catch (err) {
+        console.error('Direct screen share error:', err);
+        return;
+      }
     }
 
     if (screenSharing) {
@@ -916,16 +1022,33 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         </div>
       )}
 
-      {!inCall ? (
-        <div className="webrtc-join-panel" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', background: 'rgba(13, 15, 26, 0.8)', borderRadius: '12px', border: '1px solid rgba(124, 77, 255, 0.3)' }}>
-          <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-            <PhoneCall size={16} /> Join Voice &amp; Video Call ({transportMode})
-          </button>
-          <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-            <Tv size={16} /> Share Laptop Screen
-          </button>
-        </div>
-      ) : (
+      {/* ALWAYS VISIBLE ACTION BAR FOR ACCESSIBILITY */}
+      <div className="webrtc-action-header-bar" style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 12px', background: 'rgba(13, 15, 26, 0.9)', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(124, 77, 255, 0.3)' }}>
+        {!inCall ? (
+          <>
+            <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+              <PhoneCall size={15} /> Join Video &amp; Voice Call
+            </button>
+            <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+              <Tv size={15} /> Share Laptop Screen
+            </button>
+          </>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: '#a78bfa', fontWeight: 600 }}>Active MoQ Session (#{projectName})</span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={toggleScreenShare} style={{ padding: '6px 12px', background: screenSharing ? '#dc2626' : '#2563eb', color: '#fff', borderRadius: '6px', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Tv size={13} /> {screenSharing ? 'Stop Sharing' : 'Share Screen'}
+              </button>
+              <button onClick={endCall} style={{ padding: '6px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <PhoneOff size={13} /> Leave Call
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {inCall && (
         <div className="webrtc-call-workspace">
           <div className="webrtc-participant-count">
             <span className="webrtc-live-dot" />
