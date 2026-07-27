@@ -243,11 +243,16 @@ class MoQSession {
           error: (e) => console.error('VideoEncoder error:', e)
         });
 
+        const isScreenShare = videoTrack.label && videoTrack.label.toLowerCase().includes('screen');
+        const targetWidth = isScreenShare ? (settings.width || 1280) : (settings.width || 640);
+        const targetHeight = isScreenShare ? (settings.height || 720) : (settings.height || 480);
+        const targetBitrate = isScreenShare ? 800000 : 400000;
+
         this.videoEncoder.configure({
           codec: 'vp8',
-          width: settings.width || 480,
-          height: settings.height || 360,
-          bitrate: 400000,
+          width: targetWidth,
+          height: targetHeight,
+          bitrate: targetBitrate,
           framerate: settings.frameRate || 24,
           latencyMode: 'realtime'
         });
@@ -308,8 +313,8 @@ class MoQSession {
       if (now - lastTime >= 40) { // 25 FPS smooth streaming
         lastTime = now;
         if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 480;
-          canvas.height = video.videoHeight || 360;
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
@@ -561,8 +566,12 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const localVideoRefCallback = useCallback((node) => {
     localVideoRef.current = node;
-    if (node && localStreamRef.current) {
-      node.srcObject = localStreamRef.current;
+    if (node) {
+      if (screenStreamRef.current) {
+        node.srcObject = screenStreamRef.current;
+      } else if (localStreamRef.current) {
+        node.srcObject = localStreamRef.current;
+      }
     }
   }, []);
 
@@ -584,11 +593,13 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const startCall = async () => {
     try {
+      setInCall(true);
+      inCallRef.current = true;
+
       if (globalCallSession.isSessionActive(projectName)) {
         localStreamRef.current = globalCallSession.localStream;
         screenStreamRef.current = globalCallSession.screenStream;
         moqSessionRef.current = globalCallSession.moqSession;
-        setInCall(true);
         setScreenSharing(globalCallSession.screenSharing);
         setConnectionStatus('connected');
         return;
@@ -599,8 +610,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         audio: true
       });
       localStreamRef.current = stream;
-      inCallRef.current = true;
-      setInCall(true);
       setVideoMuted(false);
       setMicMuted(false);
       setFacingMode('user');
@@ -634,8 +643,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           if (canvas) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              const width = videoFrame.displayWidth || 480;
-              const height = videoFrame.displayHeight || 360;
+              const width = videoFrame.displayWidth || 640;
+              const height = videoFrame.displayHeight || 480;
               if (canvas.width !== width) canvas.width = width;
               if (canvas.height !== height) canvas.height = height;
               ctx.drawImage(videoFrame, 0, 0, width, height);
@@ -715,7 +724,6 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       socket.off('moq-user-joined', handleUserJoined);
       socket.off('moq-user-left', handleUserLeft);
       socket.off('peer-mic-status', handlePeerMicStatus);
-      // NOTE: Call connection & screen sharing remain active across route changes!
     };
   }, [socket, projectName, handleUserJoined]);
 
@@ -785,6 +793,10 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   };
 
   const toggleScreenShare = async () => {
+    if (!inCall) {
+      await startCall();
+    }
+
     if (screenSharing) {
       globalCallSession.stopScreenShare();
       if (screenStreamRef.current) {
@@ -796,14 +808,15 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       if (camTrack) replaceVideoTrack(camTrack);
     } else {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: 'monitor',
-            logicalSurface: true,
-            cursor: 'always'
-          },
-          audio: true
-        });
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: true
+          });
+        } catch (e) {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        }
 
         screenStreamRef.current = stream;
         globalCallSession.screenStream = stream;
@@ -825,9 +838,9 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           if (camTrack) replaceVideoTrack(camTrack);
         };
       } catch (err) {
-        console.error('Failed to start system screen share:', err);
+        console.error('Screen sharing error:', err);
         if (err.name !== 'AbortError') {
-          alert('Failed to start screen sharing. Please check permissions.');
+          alert('Screen sharing failed or was canceled.');
         }
       }
     }
@@ -835,15 +848,8 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const replaceVideoTrack = (newTrack) => {
     if (localVideoRef.current) {
-      const currentStream = localVideoRef.current.srcObject;
-      if (currentStream) {
-        const oldTrack = currentStream.getVideoTracks()[0];
-        if (oldTrack) {
-          currentStream.removeTrack(oldTrack);
-          currentStream.addTrack(newTrack);
-          localVideoRef.current.srcObject = currentStream;
-        }
-      }
+      localVideoRef.current.srcObject = new MediaStream([newTrack]);
+      localVideoRef.current.play().catch(() => {});
     }
   };
 
@@ -863,9 +869,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
       )}
 
       {!inCall ? (
-        <button className="call-btn-trigger" onClick={startCall}>
-          <PhoneCall size={14} /> Join Voice &amp; Video ({transportMode})
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button className="call-btn-trigger" onClick={startCall}>
+            <PhoneCall size={14} /> Join Voice &amp; Video ({transportMode})
+          </button>
+          <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ background: '#2563eb' }}>
+            <Tv size={14} /> Share Screen
+          </button>
+        </div>
       ) : (
         <div className="webrtc-call-workspace">
           <div className="webrtc-participant-count">
@@ -897,7 +908,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
                 <span className={`webrtc-mic-icon ${micMuted ? 'muted' : ''}`}>
                   {micMuted ? <MicOff size={9} /> : <Mic size={9} />}
                 </span>
-                {username || 'You'}
+                {username || 'You'} {screenSharing ? '(Screen)' : ''}
               </div>
             </div>
 

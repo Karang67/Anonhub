@@ -240,11 +240,17 @@ class MoQTransportClient {
           output: (chunk) => this.sendVideoChunk(chunk),
           error: (err) => console.error('VideoEncoder error:', err)
         });
+
+        const isScreenShare = videoTrack.label && videoTrack.label.toLowerCase().includes('screen');
+        const targetWidth = isScreenShare ? (settings.width || 1280) : (settings.width || 640);
+        const targetHeight = isScreenShare ? (settings.height || 720) : (settings.height || 480);
+        const targetBitrate = isScreenShare ? 800000 : 400000;
+
         this.videoEncoder.configure({
           codec: 'vp8',
-          width: settings.width || 640,
-          height: settings.height || 480,
-          bitrate: 400000,
+          width: targetWidth,
+          height: targetHeight,
+          bitrate: targetBitrate,
           framerate: settings.frameRate || 24,
           latencyMode: 'realtime'
         });
@@ -304,8 +310,8 @@ class MoQTransportClient {
       if (now - lastTime >= 40) { // 25 FPS smooth playback
         lastTime = now;
         if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 480;
-          canvas.height = video.videoHeight || 360;
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
           if (this.videoEncoder && this.videoEncoder.state === 'configured') {
@@ -594,15 +600,14 @@ export default function CallRoom() {
   const moqClientRef = useRef(globalCallSession.moqSession);
   const peerCanvasRefs = useRef({});
 
-  // WEBRTC_DEPRECATED
-  // const peersRef = useRef({});    // { socketId: RTCPeerConnection }
-  // const streamsRef = useRef({});   // { socketId: MediaStream }
-  // const candidateQueues = useRef({}); // { socketId: [RTCIceCandidate] }
-
   const localVideoRefCallback = useCallback((node) => {
     localVideoRef.current = node;
-    if (node && localStreamRef.current) {
-      node.srcObject = localStreamRef.current;
+    if (node) {
+      if (screenStreamRef.current) {
+        node.srcObject = screenStreamRef.current;
+      } else if (localStreamRef.current) {
+        node.srcObject = localStreamRef.current;
+      }
     }
   }, []);
 
@@ -682,11 +687,6 @@ export default function CallRoom() {
       setAuthError('Network error. Please try again.');
     }
   };
-
-  // WEBRTC_DEPRECATED
-  /*
-  const createPeerConnection = (peerSocketId, peerName, isInitiator, socket) => { ... };
-  */
 
   // ─── End Call Cleanup ────────────────────────────────────────────────────────
   const endCallCleanup = useCallback(() => {
@@ -778,7 +778,6 @@ export default function CallRoom() {
       socket.off('moq-user-joined');
       socket.off('moq-user-left');
       socket.off('peer-mic-status');
-      // NOTE: Call & screen sharing remain active across route navigation!
       socket.disconnect();
     };
   }, [isAuthed, roomName, sidebarOpen, username, handleUserJoined]);
@@ -794,11 +793,12 @@ export default function CallRoom() {
   // ─── Start Call ──────────────────────────────────────────────────────────────
   const startCall = async () => {
     try {
+      setInCall(true);
+
       if (globalCallSession.isSessionActive(roomName)) {
         localStreamRef.current = globalCallSession.localStream;
         screenStreamRef.current = globalCallSession.screenStream;
         moqClientRef.current = globalCallSession.moqSession;
-        setInCall(true);
         setScreenSharing(globalCallSession.screenSharing);
         setConnectionStatus('connected');
         return;
@@ -812,7 +812,6 @@ export default function CallRoom() {
       setVideoMuted(false);
       setMicMuted(false);
       setFacingMode('user');
-      setInCall(true);
 
       requestAnimationFrame(() => {
         if (localVideoRef.current && localStreamRef.current) {
@@ -951,16 +950,17 @@ export default function CallRoom() {
   };
 
   const replaceVideoTrack = (newTrack) => {
-    if (localVideoRef.current?.srcObject) {
-      const stream = localVideoRef.current.srcObject;
-      const old = stream.getVideoTracks()[0];
-      if (old) stream.removeTrack(old);
-      stream.addTrack(newTrack);
-      localVideoRef.current.srcObject = stream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = new MediaStream([newTrack]);
+      localVideoRef.current.play().catch(() => {});
     }
   };
 
   const toggleScreenShare = async () => {
+    if (!inCall) {
+      await startCall();
+    }
+
     if (screenSharing) {
       globalCallSession.stopScreenShare();
       if (screenStreamRef.current) {
@@ -972,14 +972,15 @@ export default function CallRoom() {
       if (camTrack) replaceVideoTrack(camTrack);
     } else {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: 'monitor',
-            logicalSurface: true,
-            cursor: 'always'
-          },
-          audio: true
-        });
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always' },
+            audio: true
+          });
+        } catch (e) {
+          stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        }
 
         screenStreamRef.current = stream;
         globalCallSession.screenStream = stream;
@@ -1001,9 +1002,9 @@ export default function CallRoom() {
           if (camTrack) replaceVideoTrack(camTrack);
         };
       } catch (err) {
-        console.error('Failed to start system screen share:', err);
+        console.error('Screen sharing error:', err);
         if (err.name !== 'AbortError') {
-          alert('Failed to start screen sharing. Please check permissions.');
+          alert('Screen sharing failed or was canceled.');
         }
       }
     }
@@ -1093,30 +1094,52 @@ export default function CallRoom() {
               <Video size={36} color="rgba(124, 77, 255, 0.7)" />
             </div>
             <h3>Ready to join the MoQ call?</h3>
-            <p>Click the button below to join low-latency Media over QUIC streaming.</p>
-            <button
-              id="callroom-start-btn"
-              onClick={startCall}
-              style={{
-                marginTop: '8px',
-                padding: '12px 32px',
-                borderRadius: '28px',
-                background: 'linear-gradient(135deg, #7c4dff, #5c35cc)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                boxShadow: '0 8px 28px rgba(124, 77, 255, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                letterSpacing: '0.05em',
-                transition: 'all 0.2s',
-              }}
-            >
-              <Video size={18} /> Join MoQ Call
-            </button>
+            <p>Click below to join or share your desktop screen directly.</p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+              <button
+                id="callroom-start-btn"
+                onClick={startCall}
+                style={{
+                  padding: '12px 28px',
+                  borderRadius: '28px',
+                  background: 'linear-gradient(135deg, #7c4dff, #5c35cc)',
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 28px rgba(124, 77, 255, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  letterSpacing: '0.05em',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Video size={18} /> Join MoQ Call
+              </button>
+              <button
+                onClick={toggleScreenShare}
+                style={{
+                  padding: '12px 28px',
+                  borderRadius: '28px',
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 8px 28px rgba(37, 99, 235, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  letterSpacing: '0.05em',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <MonitorUp size={18} /> Share Screen
+              </button>
+            </div>
           </div>
         ) : (
           <div
@@ -1155,7 +1178,7 @@ export default function CallRoom() {
                 <span className={`callroom-mic-indicator${micMuted ? ' muted' : ''}`}>
                   {micMuted ? <MicOff size={10} /> : <Mic size={10} />}
                 </span>
-                {username} (You)
+                {username} (You) {screenSharing ? '(Screen)' : ''}
               </div>
             </div>
 
@@ -1177,10 +1200,16 @@ export default function CallRoom() {
       {/* Controls Bar */}
       <footer className="callroom-controls">
         {!inCall ? (
-          <button id="callroom-join-btn" className="callroom-ctrl-btn" onClick={startCall} title="Join Call">
-            <Video size={20} />
-            <span className="callroom-ctrl-btn-label">Join</span>
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button id="callroom-join-btn" className="callroom-ctrl-btn" onClick={startCall} title="Join Call">
+              <Video size={20} />
+              <span className="callroom-ctrl-btn-label">Join</span>
+            </button>
+            <button className="callroom-ctrl-btn" onClick={toggleScreenShare} title="Share Screen" style={{ background: '#2563eb' }}>
+              <MonitorUp size={20} />
+              <span className="callroom-ctrl-btn-label">Share</span>
+            </button>
+          </div>
         ) : (
           <>
             <button
