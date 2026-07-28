@@ -17,6 +17,7 @@ import Editor from '@monaco-editor/react';
 import QRCode from 'qrcode';
 
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
+import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
@@ -1258,7 +1259,9 @@ export default function ProjectRoom() {
           socketRef.current.emit('whiteboard update', { projectName, content: json });
         }
       }
-      socket.disconnect();
+      if (!globalCallSession.isSessionActive(projectName)) {
+        socket.disconnect();
+      }
     };
   }, [projectName]);
 

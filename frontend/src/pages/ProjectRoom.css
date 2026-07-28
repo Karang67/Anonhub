@@ -2717,6 +2717,21 @@ html[data-theme="dark"] .snippets-filter-select {
   display: none !important;
 }
 
+.project-editor-wrapper.sidebar-hidden .project-chat-container:has(.in-call) {
+  display: flex !important;
+  position: fixed !important;
+  top: 70px !important;
+  right: 20px !important;
+  width: 320px !important;
+  max-height: 480px !important;
+  z-index: 9999 !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  background: var(--card-background, #141414) !important;
+  border: 1px solid var(--border-color, #262626) !important;
+}
+
 .styling-popover-container {
   position: relative;
 }

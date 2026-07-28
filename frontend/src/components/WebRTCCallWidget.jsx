@@ -842,6 +842,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
 
   const endCall = () => {
     globalCallSession.endSession();
+    globalCallSession.clearPersistedCallState(projectName);
 
     localStreamRef.current = null;
     screenStreamRef.current = null;
@@ -854,6 +855,14 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
     setConnectionStatus('disconnected');
     setMaximizedTileId(null);
   };
+
+  // Auto-restore / Re-join call session if persisted in sessionStorage (e.g., after browser refresh)
+  useEffect(() => {
+    const persisted = globalCallSession.getPersistedCallState(projectName);
+    if (persisted && persisted.active && !inCall && !globalCallSession.isSessionActive(projectName)) {
+      startCall();
+    }
+  }, [projectName]);
 
   useEffect(() => {
     if (!socket) return;
@@ -1111,7 +1120,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
   };
 
   return (
-    <div className="webrtc-call-container">
+    <div className={`webrtc-call-container ${inCall ? 'in-call' : ''}`}>
       {connectionStatus === 'reconnection-failed' && (
         <div className="connection-error-banner">
           <span>Connection lost. Try to reconnect</span>

@@ -899,9 +899,19 @@ export default function CallRoom() {
       socket.off('moq-user-joined');
       socket.off('moq-user-left');
       socket.off('peer-mic-status');
-      socket.disconnect();
+      if (!globalCallSession.isSessionActive(roomName)) {
+        socket.disconnect();
+      }
     };
   }, [isAuthed, roomName, sidebarOpen, username, handleUserJoined]);
+
+  // Auto-restore / Re-join call session if persisted in sessionStorage (e.g., after browser refresh)
+  useEffect(() => {
+    const persisted = globalCallSession.getPersistedCallState(roomName);
+    if (persisted && persisted.active && !inCall && !globalCallSession.isSessionActive(roomName)) {
+      startCall();
+    }
+  }, [roomName]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

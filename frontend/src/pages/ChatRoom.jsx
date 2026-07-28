@@ -18,6 +18,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall } from 'lucide-react';
 import QRCode from 'qrcode';
 import { initSocket, getCookie } from '../services/socket';
+import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
 import './ChatRoom.css';
@@ -354,7 +355,9 @@ export default function ChatRoom() {
 
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      socket.disconnect();
+      if (!globalCallSession.isSessionActive(roomName)) {
+        socket.disconnect();
+      }
     };
   }, [roomName]);
 

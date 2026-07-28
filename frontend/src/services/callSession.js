@@ -26,10 +26,51 @@ class CallSessionManager {
     if (moqSession) this.moqSession = moqSession;
     if (socket) this.socket = socket;
     this.inCall = true;
+    this.persistCallState(roomName, { active: true });
   }
 
   isSessionActive(roomName) {
-    return this.inCall && this.activeRoom === roomName;
+    if (this.inCall && this.activeRoom === roomName) return true;
+    const persisted = this.getPersistedCallState(roomName);
+    return !!(persisted && persisted.active);
+  }
+
+  persistCallState(roomName, extra = {}) {
+    if (typeof sessionStorage === 'undefined' || !roomName) return;
+    try {
+      const state = {
+        active: true,
+        roomName,
+        timestamp: Date.now(),
+        ...extra
+      };
+      sessionStorage.setItem(`anonhub_active_call_${roomName}`, JSON.stringify(state));
+    } catch (e) { }
+  }
+
+  clearPersistedCallState(roomName) {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      const targetRoom = roomName || this.activeRoom;
+      if (targetRoom) {
+        sessionStorage.removeItem(`anonhub_active_call_${targetRoom}`);
+      }
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('anonhub_active_call_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch (e) { }
+  }
+
+  getPersistedCallState(roomName) {
+    if (typeof sessionStorage === 'undefined' || !roomName) return null;
+    try {
+      const raw = sessionStorage.getItem(`anonhub_active_call_${roomName}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   stopScreenShare() {
@@ -56,6 +97,7 @@ class CallSessionManager {
     if (this.socket && this.activeRoom) {
       this.socket.emit('moq-leave-room', { projectName: this.activeRoom });
     }
+    this.clearPersistedCallState(this.activeRoom);
     this.activeRoom = null;
     this.inCall = false;
     this.screenSharing = false;
@@ -63,3 +105,4 @@ class CallSessionManager {
 }
 
 export const globalCallSession = new CallSessionManager();
+
