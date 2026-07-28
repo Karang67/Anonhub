@@ -84,8 +84,15 @@
 }
 
 @keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 8px #7c4dff, 0 0 16px #7c4dff88; }
-  50% { box-shadow: 0 0 14px #7c4dff, 0 0 28px #7c4dffaa, 0 0 40px #7c4dff44; }
+
+  0%,
+  100% {
+    box-shadow: 0 0 8px #7c4dff, 0 0 16px #7c4dff88;
+  }
+
+  50% {
+    box-shadow: 0 0 14px #7c4dff, 0 0 28px #7c4dffaa, 0 0 40px #7c4dff44;
+  }
 }
 
 .callroom-title {
@@ -144,8 +151,15 @@
 }
 
 @keyframes live-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* ─── Video Grid Area ─────────────────────────────────────────────────────────── */
@@ -177,14 +191,17 @@
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
+
 .callroom-video-mesh[data-count="2"] {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;
 }
+
 .callroom-video-mesh[data-count="3"] {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
 }
+
 .callroom-video-mesh[data-count="4"] {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
@@ -228,50 +245,6 @@
   height: 100%;
   object-fit: contain !important;
   display: block;
-  background: #000000 !important;
-}
-
-/* ─── Tile Maximize / Minimize Button ─────────────────────────────────────── */
-.tile-maximize-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  background: rgba(13, 15, 26, 0.85);
-  border: 1px solid rgba(124, 77, 255, 0.4);
-  color: #c5b3ff;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-  transition: all 0.2s ease;
-}
-
-.tile-maximize-btn:hover,
-.tile-maximize-btn:active {
-  background: #7c4dff;
-  color: #ffffff;
-  border-color: #7c4dff;
-  transform: scale(1.05);
-}
-
-.callroom-video-tile.maximized-tile,
-.video-card.maximized-tile {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 999999 !important;
-  border-radius: 0 !important;
   background: #000000 !important;
 }
 
@@ -680,15 +653,6 @@
     width: 40px;
     height: 40px;
     border-radius: 10px;
-  }
-
-  .tile-maximize-btn {
-    top: 8px;
-    right: 8px;
-    padding: 6px 10px;
-    font-size: 0.72rem;
-    background: rgba(124, 77, 255, 0.3);
-    border-color: rgba(124, 77, 255, 0.6);
   }
 
   /* Full-screen chat overlay on mobile with ultra-high z-index above site navbar */

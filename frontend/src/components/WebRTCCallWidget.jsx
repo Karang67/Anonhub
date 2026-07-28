@@ -107,6 +107,10 @@ class MoQSession {
     this.nextAudioTime = 0;
     this.activeVideoLoopId = 0;
     this.forceNextKeyframe = true;
+    this.currentEncWidth = 0;
+    this.currentEncHeight = 0;
+    this.offscreenCanvas = null;
+    this.offscreenCtx = null;
   }
 
   async connect() {
@@ -265,7 +269,7 @@ class MoQSession {
     }
   }
 
-  switchVideoTrack(videoTrack) {
+  switchVideoTrack(videoTrack, isScreenShareExplicit = false) {
     if (!this.connected || !videoTrack || typeof VideoEncoder === 'undefined') return;
 
     this.activeVideoLoopId++;
@@ -273,7 +277,19 @@ class MoQSession {
     const currentLoopId = this.activeVideoLoopId;
 
     try {
-      const settings = videoTrack.getSettings();
+      const settings = typeof videoTrack.getSettings === 'function' ? videoTrack.getSettings() : {};
+      const label = (videoTrack.label || '').toLowerCase();
+      const displaySurface = settings.displaySurface;
+
+      const isScreenShare = isScreenShareExplicit ||
+        !!displaySurface ||
+        label.includes('screen') ||
+        label.includes('window') ||
+        label.includes('display') ||
+        label.includes('monitor') ||
+        label.includes('tab') ||
+        label.includes('web-contents');
+
       if (this.videoEncoder) {
         try { this.videoEncoder.close(); } catch (e) { }
       }
@@ -283,10 +299,16 @@ class MoQSession {
         error: (e) => console.error('VideoEncoder error:', e)
       });
 
-      const isScreenShare = videoTrack.label && videoTrack.label.toLowerCase().includes('screen');
-      const targetWidth = isScreenShare ? (settings.width || 1280) : (settings.width || 640);
-      const targetHeight = isScreenShare ? (settings.height || 720) : (settings.height || 480);
-      const targetBitrate = isScreenShare ? 800000 : 400000;
+      const rawWidth = settings.width || (isScreenShare ? 1280 : 640);
+      const rawHeight = settings.height || (isScreenShare ? 720 : 480);
+
+      // Force EVEN dimensions required by WebCodecs VideoEncoder (VP8/H264)
+      const targetWidth = Math.max(2, rawWidth & ~1);
+      const targetHeight = Math.max(2, rawHeight & ~1);
+      const targetBitrate = isScreenShare ? 1200000 : 400000;
+
+      this.currentEncWidth = targetWidth;
+      this.currentEncHeight = targetHeight;
 
       this.videoEncoder.configure({
         codec: 'vp8',
@@ -301,7 +323,7 @@ class MoQSession {
         try {
           const processor = new MediaStreamTrackProcessor({ track: videoTrack });
           const reader = processor.readable.getReader();
-          this.readVideoFrames(reader, currentLoopId);
+          this.readVideoFrames(reader, currentLoopId, isScreenShare, videoTrack);
         } catch (e) {
           this.fallbackVideoFrames(videoTrack, currentLoopId);
         }
@@ -330,9 +352,13 @@ class MoQSession {
       }
 
       if (video.readyState >= 2) {
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const rawW = video.videoWidth || 640;
+        const rawH = video.videoHeight || 480;
+        const evenW = Math.max(2, rawW & ~1);
+        const evenH = Math.max(2, rawH & ~1);
+        if (canvas.width !== evenW) canvas.width = evenW;
+        if (canvas.height !== evenH) canvas.height = evenH;
+        ctx.drawImage(video, 0, 0, evenW, evenH);
 
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
           try {
@@ -400,18 +426,69 @@ class MoQSession {
     }
   }
 
-  async readVideoFrames(reader, loopId) {
+  async readVideoFrames(reader, loopId, isScreenShare, videoTrack) {
     let frameCount = 0;
     while (this.connected && loopId === this.activeVideoLoopId) {
       try {
         const { value: frame, done } = await reader.read();
         if (done || !frame || loopId !== this.activeVideoLoopId) break;
+
         if (this.videoEncoder && this.videoEncoder.state === 'configured') {
+          let frameToEncode = frame;
+          let tempFrameCreated = false;
+
+          const displayW = frame.displayWidth || frame.codedWidth || this.currentEncWidth || 640;
+          const displayH = frame.displayHeight || frame.codedHeight || this.currentEncHeight || 480;
+          const evenW = Math.max(2, displayW & ~1);
+          const evenH = Math.max(2, displayH & ~1);
+
+          // Handle dynamic window resize outside the browser
+          if (evenW !== this.currentEncWidth || evenH !== this.currentEncHeight) {
+            this.currentEncWidth = evenW;
+            this.currentEncHeight = evenH;
+            try {
+              const settings = typeof videoTrack?.getSettings === 'function' ? videoTrack.getSettings() : {};
+              this.videoEncoder.configure({
+                codec: 'vp8',
+                width: this.currentEncWidth,
+                height: this.currentEncHeight,
+                bitrate: isScreenShare ? 1200000 : 400000,
+                framerate: settings.frameRate || 24,
+                latencyMode: 'realtime'
+              });
+              this.forceNextKeyframe = true;
+            } catch (err) {
+              console.warn('VideoEncoder dynamic resize error:', err);
+            }
+          }
+
+          // If frame dimensions are odd, scale/crop to even dimensions via canvas to prevent WebCodecs crash
+          if (displayW % 2 !== 0 || displayH % 2 !== 0) {
+            if (!this.offscreenCanvas) {
+              this.offscreenCanvas = document.createElement('canvas');
+              this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+            }
+            if (this.offscreenCanvas.width !== evenW) this.offscreenCanvas.width = evenW;
+            if (this.offscreenCanvas.height !== evenH) this.offscreenCanvas.height = evenH;
+            this.offscreenCtx.drawImage(frame, 0, 0, evenW, evenH);
+            try {
+              frameToEncode = new VideoFrame(this.offscreenCanvas, { timestamp: frame.timestamp });
+              tempFrameCreated = true;
+            } catch (e) {
+              frameToEncode = frame;
+              tempFrameCreated = false;
+            }
+          }
+
           const keyFrame = this.forceNextKeyframe || frameCount === 0 || frameCount % 12 === 0;
           if (this.forceNextKeyframe) this.forceNextKeyframe = false;
 
-          this.videoEncoder.encode(frame, { keyFrame });
+          this.videoEncoder.encode(frameToEncode, { keyFrame });
           frameCount++;
+
+          if (tempFrameCreated) {
+            frameToEncode.close();
+          }
         }
         frame.close();
       } catch (e) {
@@ -549,6 +626,8 @@ class MoQSession {
 
   disconnect() {
     this.connected = false;
+    this.offscreenCanvas = null;
+    this.offscreenCtx = null;
     if (this.videoEncoder) { try { this.videoEncoder.close(); } catch (e) { } }
     if (this.audioEncoder) { try { this.audioEncoder.close(); } catch (e) { } }
     Object.values(this.peerDecoders).forEach(({ videoDecoder, audioDecoder }) => {
@@ -1002,7 +1081,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
         replaceVideoTrack(screenTrack);
 
         if (moqSessionRef.current) {
-          moqSessionRef.current.switchVideoTrack(screenTrack);
+          moqSessionRef.current.switchVideoTrack(screenTrack, true);
         }
 
         screenTrack.onended = () => {
@@ -1012,7 +1091,7 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
           const camTrack = localStreamRef.current?.getVideoTracks()[0];
           if (camTrack) {
             replaceVideoTrack(camTrack);
-            if (moqSessionRef.current) moqSessionRef.current.switchVideoTrack(camTrack);
+            if (moqSessionRef.current) moqSessionRef.current.switchVideoTrack(camTrack, false);
           }
         };
       } catch (err) {
