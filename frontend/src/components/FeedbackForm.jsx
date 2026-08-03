@@ -41,35 +41,34 @@ export default function FeedbackForm({ onSuccess }) {
     let web3Sent = false;
     let dbSent = false;
 
-    // 1. Send via Web3Forms for instant, guaranteed live email delivery
+    // 1. Send via Web3Forms (recommended FormData format for free client API)
     const WEB3FORMS_KEY = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '42667a44-9862-4b87-a1be-7f2f261d70ee';
+    let web3ErrorMsg = '';
+
     if (WEB3FORMS_KEY) {
       try {
-        const web3Payload = {
-          access_key: WEB3FORMS_KEY,
-          name: cleanName || 'Anonymous User',
-          email: cleanEmail || 'loveinsights880@gmail.com',
-          subject: `New AnonHub Feedback (${rating} Stars)`,
-          from_name: 'AnonHub App',
-          rating: `${rating} / 5`,
-          message: cleanMessage
-        };
+        const formData = new FormData();
+        formData.append('access_key', WEB3FORMS_KEY);
+        formData.append('name', cleanName || 'Anonymous User');
+        formData.append('email', cleanEmail || 'loveinsights880@gmail.com');
+        formData.append('subject', `New AnonHub Feedback (${rating} Stars)`);
+        formData.append('rating', `${rating} / 5`);
+        formData.append('message', cleanMessage);
 
         const wRes = await fetch('https://api.web3forms.com/submit', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(web3Payload)
+          body: formData
         });
 
         const wData = await wRes.json().catch(() => null);
-        if (wRes.ok && (wData === null || wData.success !== false)) {
+        if (wRes.ok && wData?.success) {
           web3Sent = true;
+        } else if (wData?.message) {
+          web3ErrorMsg = wData.message;
+          console.warn('Web3Forms message:', wData.message);
         }
       } catch (wErr) {
-        console.warn('Web3Forms dispatch warning:', wErr);
+        console.warn('Web3Forms dispatch error:', wErr);
       }
     }
 
@@ -99,7 +98,7 @@ export default function FeedbackForm({ onSuccess }) {
       setSuccess(true);
       if (onSuccess) onSuccess();
     } else {
-      setError('Submission failed. Please check your network connection and try again.');
+      setError(web3ErrorMsg || 'Submission failed. Please check your network connection and try again.');
     }
     setLoading(false);
   };
