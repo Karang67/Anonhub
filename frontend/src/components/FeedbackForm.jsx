@@ -46,6 +46,9 @@ export default function FeedbackForm({ onSuccess }) {
       if (cleanName) payload.name = cleanName;
       if (cleanEmail) payload.email = cleanEmail;
 
+      const WEB3FORMS_KEY = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '42667a44-9862-4b87-a1be-7f2f261d70ee';
+
+      // 1. Submit to local database
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,6 +69,31 @@ export default function FeedbackForm({ onSuccess }) {
 
       if (!res.ok) {
         throw new Error(data?.error || 'Submission failed. Please try again.');
+      }
+
+      // 2. Submit to Web3Forms for instant email delivery to loveinsights880@gmail.com
+      if (WEB3FORMS_KEY) {
+        try {
+          const web3Payload = {
+            access_key: WEB3FORMS_KEY,
+            name: cleanName || 'Anonymous User',
+            email: cleanEmail || 'loveinsights880@gmail.com',
+            subject: `New AnonHub Feedback (${rating} Stars)`,
+            from_name: 'AnonHub App',
+            rating: `${rating} / 5`,
+            message: cleanMessage
+          };
+          await fetch('https://api.web3forms.com/submit', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(web3Payload)
+          });
+        } catch (wErr) {
+          console.warn('Web3Forms dispatch warning:', wErr);
+        }
       }
 
       setSuccess(true);
