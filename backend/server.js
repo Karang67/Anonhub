@@ -89,11 +89,17 @@ const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'anonhub-secret
 const ADMIN_SESSION_COOKIE = process.env.ADMIN_SESSION_COOKIE || 'anonhub_admin_session';
 const ADMIN_SESSION_MAX_AGE = Number(process.env.ADMIN_SESSION_MAX_AGE || 7 * 24 * 60 * 60 * 1000); // 7 days
 
+const WEB3FORMS_ACCESS_KEY = process.env.WEB3FORMS_ACCESS_KEY || process.env.VITE_WEB3FORMS_ACCESS_KEY || '';
 let mailTransport = null;
 let mailDeliveryEnabled = false;
 let useMailgunApi = false;
+let useWeb3Forms = false;
 
-if (MAILGUN_API_KEY && MAILGUN_DOMAIN) {
+if (WEB3FORMS_ACCESS_KEY) {
+    useWeb3Forms = true;
+    mailDeliveryEnabled = true;
+    log('info', 'Web3Forms API configured for email delivery.');
+} else if (MAILGUN_API_KEY && MAILGUN_DOMAIN) {
     useMailgunApi = true;
     mailDeliveryEnabled = true;
     log('info', 'Mailgun API configured for email delivery.');
@@ -116,7 +122,7 @@ if (MAILGUN_API_KEY && MAILGUN_DOMAIN) {
             log('warn', 'SMTP transport verification failed; feedback email delivery disabled.', err);
         });
 } else {
-    log('info', 'Mailgun and SMTP not configured — feedback emails will not be sent. Set MAILGUN_* or SMTP_* env vars to enable.');
+    log('info', 'Mailgun, Web3Forms, and SMTP not configured — feedback emails will not be sent. Set WEB3FORMS_ACCESS_KEY, MAILGUN_*, or SMTP_* env vars to enable.');
 }
 
 function generateAdminSessionToken() {
@@ -126,15 +132,49 @@ function generateAdminSessionToken() {
 }
 
 function requireAdminAuth(req, res, next) {
-    const sessionToken = req.cookies[ADMIN_SESSION_COOKIE];
-    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.body.adminKey;
-    if (sessionToken === generateAdminSessionToken() || adminKey === ADMIN_PAGE_KEY) {
+    const sessionToken = req.cookies ? req.cookies[ADMIN_SESSION_COOKIE] : undefined;
+    const adminKey = req.headers?.['x-admin-key'] || req.query?.adminKey || (req.body ? req.body.adminKey : undefined);
+    if (sessionToken === generateAdminSessionToken() || (adminKey && adminKey === ADMIN_PAGE_KEY)) {
         return next();
     }
     return res.status(403).json({ error: 'Unauthorized access.' });
 }
 
-async function sendFeedbackEmail(mailOpts) {
+async function sendFeedbackEmail(mailOpts, fbDetails = {}) {
+    if (useWeb3Forms && WEB3FORMS_ACCESS_KEY) {
+        const payload = {
+            access_key: WEB3FORMS_ACCESS_KEY,
+            subject: mailOpts.subject || 'New Feedback Received',
+            from_name: 'AnonHub Feedback',
+            name: fbDetails.name || 'Anonymous User',
+            email: fbDetails.email || 'no-reply@anonhub.app',
+            rating: fbDetails.rating ? `${fbDetails.rating} / 5` : 'N/A',
+            message: fbDetails.message || mailOpts.text
+        };
+
+        const response = await fetch('https://api.web3forms.com/submit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'AnonHub-App/1.0'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const text = await response.text();
+        let data = {};
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            if (!response.ok) throw new Error(`Web3Forms HTTP ${response.status}: ${text.slice(0, 100)}`);
+        }
+        if (!response.ok || (data && data.success === false)) {
+            throw new Error(`Web3Forms send failed: ${data.message || text || response.statusText}`);
+        }
+        return data;
+    }
+
     if (useMailgunApi) {
         const form = new URLSearchParams();
         form.append('from', mailOpts.from);
@@ -1109,21 +1149,25 @@ app.get('/api/versions/:projectName', preventCache, async (req, res) => {
  * @api {post} /api/feedback Submit user feedback from Help page
  */
 app.post('/api/feedback',
-    apiLimiter,
     [
-        body('name').optional().isString().trim().isLength({ max: 100 }).withMessage('Name is too long.'),
-        body('email').optional().isEmail().withMessage('Invalid email address.'),
+        body('name').optional({ checkFalsy: true }).isString().trim().isLength({ max: 100 }).withMessage('Name is too long.'),
+        body('email').optional({ checkFalsy: true }).isEmail().withMessage('Invalid email address.'),
         body('message').isString().trim().notEmpty().isLength({ max: 2000 }).withMessage('Message is required and must be under 2000 characters.'),
-        body('rating').optional().isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5.'),
+        body('rating').optional({ checkFalsy: true }).isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5.'),
     ],
     async (req, res) => {
         if (!handleValidation(req, res)) return;
         try {
             const { name, email, message, rating } = req.body;
-            const fb = new Feedback({ name: name || undefined, email: email || undefined, message, rating: rating || undefined });
+            const fb = new Feedback({
+                name: name ? String(name).trim() : undefined,
+                email: email ? String(email).trim() : undefined,
+                message: String(message).trim(),
+                rating: rating ? Number(rating) : undefined
+            });
             await fb.save();
-            // Optionally: emit an admin socket event or send an email here.
-            // Only attempt email delivery if a provider is actually enabled.
+
+            // Optionally attempt email notification if configured
             if (ADMIN_EMAIL && mailDeliveryEnabled) {
                 try {
                     const mailOpts = {
@@ -1133,13 +1177,13 @@ app.post('/api/feedback',
                         text: `Name: ${fb.name || '—'}\nEmail: ${fb.email || '—'}\nRating: ${fb.rating || '—'}\n\nMessage:\n${fb.message}`,
                         html: `<p><strong>Name:</strong> ${fb.name || '—'}</p><p><strong>Email:</strong> ${fb.email || '—'}</p><p><strong>Rating:</strong> ${fb.rating || '—'}</p><hr/><p>${(fb.message || '').replace(/\n/g, '<br/>')}</p>`
                     };
-                    await sendFeedbackEmail(mailOpts);
-                    log('info', 'Feedback email sent to', ADMIN_EMAIL);
+                    await sendFeedbackEmail(mailOpts, { name: fb.name, email: fb.email, rating: fb.rating, message: fb.message });
+                    log('info', 'Feedback notification dispatched successfully.');
                 } catch (err) {
-                    log('warn', 'Feedback email send failed; feedback stored without notification.', err);
+                    log('warn', 'Feedback notification failed; feedback stored without notification.', err);
                 }
             } else {
-                log('debug', 'Email delivery disabled or not configured; feedback saved only to the database.');
+                log('debug', 'Email delivery disabled or not configured; feedback saved only to database.');
             }
             res.json({ success: true });
         } catch (err) {
@@ -1169,10 +1213,10 @@ app.get('/api/admin/feedback', preventCache, requireAdminAuth, async (req, res) 
 app.get('/api/admin/feedback/status', preventCache, requireAdminAuth, (req, res) => {
     res.json({
         emailDeliveryEnabled: mailDeliveryEnabled,
-        emailProvider: useMailgunApi ? 'mailgun' : (mailTransport ? 'smtp' : 'none'),
+        emailProvider: useWeb3Forms ? 'web3forms' : (useMailgunApi ? 'mailgun' : (mailTransport ? 'smtp' : 'none')),
         adminEmail: ADMIN_EMAIL,
         message: mailDeliveryEnabled
-            ? 'Email notifications are enabled.'
+            ? `Email notifications are enabled (via ${useWeb3Forms ? 'Web3Forms' : (useMailgunApi ? 'Mailgun' : 'SMTP')}).`
             : 'Email notifications are disabled. Feedback is still stored in the database.'
     });
 });
