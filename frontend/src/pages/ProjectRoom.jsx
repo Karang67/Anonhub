@@ -9,8 +9,9 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut, MousePointer, Square, Circle as CircleIcon, Triangle as TriangleIcon, Minus, Scissors, Undo, Redo, Eraser, Shapes, Diamond, ArrowRight, Star, Heart, Upload } from 'lucide-react';
+import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut, MousePointer, Square, Circle as CircleIcon, Triangle as TriangleIcon, Minus, Scissors, Undo, Redo, Eraser, Shapes, Diamond, ArrowRight, Star, Heart, Upload, Shield, Key, Lock } from 'lucide-react';
 import { Canvas, Rect, Circle, PencilBrush, Triangle, Line, Polygon, Path } from 'fabric';
 import { Editor as TinyMCEEditor } from '@tinymce/tinymce-react';
 import Editor from '@monaco-editor/react';
@@ -46,6 +47,21 @@ export default function ProjectRoom() {
   const [isOwner, setIsOwner] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [overlayError, setOverlayError] = useState('');
+
+  // Project Permissions (synced from server)
+  const [projectPermissions, setProjectPermissions] = useState({
+    allowDraw: true,
+    allowDocWrite: true,
+    allowCodeWrite: true
+  });
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [showOwnerKeyModal, setShowOwnerKeyModal] = useState(false);
+  const [ownerKeyInput, setOwnerKeyInput] = useState('');
+  const [ownerKeyError, setOwnerKeyError] = useState('');
+  const [ownerKeySuccess, setOwnerKeySuccess] = useState('');
+  const [claimingOwnership, setClaimingOwnership] = useState(false);
+  const [newCustomOwnerKey, setNewCustomOwnerKey] = useState('');
+  const [customOwnerKeyMsg, setCustomOwnerKeyMsg] = useState(null);
 
   // Messaging state hooks
   const [chatMessages, setChatMessages] = useState([]);
@@ -433,6 +449,29 @@ export default function ProjectRoom() {
     triggerCodeUpdate(snapshotItem.files);
     addToast('Project restored to snapshot version.', 'success');
     addTimelineEvent(`🕒 Restored project to version from ${new Date(snapshotItem.timestamp).toLocaleTimeString()}`);
+  };
+
+  // ── Room Permission Handlers ──────────────────────────────────────────────
+  const handleProjectPermissionToggle = (key) => {
+    const updated = { ...projectPermissions, [key]: !projectPermissions[key] };
+    setProjectPermissions(updated);
+    socketRef.current?.emit('update project permissions', { projectName, ...updated });
+    addToast(`Permission updated for ${key}`, 'info');
+  };
+
+  const handleClaimProjectOwnership = () => {
+    const key = ownerKeyInput.trim();
+    if (!key) { setOwnerKeyError('Please enter the access key.'); return; }
+    setClaimingOwnership(true);
+    setOwnerKeyError('');
+    setOwnerKeySuccess('');
+    socketRef.current?.emit('claim project ownership', { projectName, accessKey: key });
+  };
+
+  const handleSaveCustomOwnerKey = () => {
+    const key = newCustomOwnerKey.trim();
+    if (!key) { setCustomOwnerKeyMsg({ type: 'error', text: 'Please enter a key.' }); return; }
+    socketRef.current?.emit('set owner key', { projectName, newOwnerKey: key });
   };
 
   // Typing status clear out intervals
@@ -1007,6 +1046,38 @@ export default function ProjectRoom() {
 
     socket.on('is owner', (val) => {
       setIsOwner(val);
+    });
+
+    socket.on('project permissions', (perms) => {
+      setProjectPermissions({
+        allowDraw:      perms.allowDraw !== false,
+        allowDocWrite:  perms.allowDocWrite !== false,
+        allowCodeWrite: perms.allowCodeWrite !== false
+      });
+    });
+
+    socket.on('claim project ownership result', ({ success, message }) => {
+      setClaimingOwnership(false);
+      if (success) {
+        setOwnerKeySuccess(message);
+        setOwnerKeyError('');
+        setOwnerKeyInput('');
+        setTimeout(() => setOwnerKeySuccess(''), 4000);
+      } else {
+        setOwnerKeyError(message);
+        setOwnerKeySuccess('');
+      }
+    });
+
+    socket.on('set owner key result', ({ success, message }) => {
+      if (success) {
+        setCustomOwnerKeyMsg({ type: 'success', text: message });
+        setNewCustomOwnerKey('');
+        addToast('Owner Key updated successfully!', 'success');
+        setTimeout(() => setCustomOwnerKeyMsg(null), 4000);
+      } else {
+        setCustomOwnerKeyMsg({ type: 'error', text: message });
+      }
     });
 
     socket.on('access denied', (data) => {
@@ -3123,6 +3194,25 @@ export default function ProjectRoom() {
               </div>
 
               <div className="workspace-title-actions">
+                {isOwner ? (
+                  <button
+                    onClick={() => setShowPermissionsModal(true)}
+                    className="workspace-tour-trigger-btn"
+                    title="Room Permissions Settings"
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'var(--primary-color)', color: 'white' }}
+                  >
+                    <Shield size={13} /> <span className="btn-text">Permissions</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setShowOwnerKeyModal(true); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+                    className="workspace-tour-trigger-btn"
+                    title="Claim room owner status with access key"
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Key size={13} /> <span className="btn-text">Enter Owner Key</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setShowShareModal(true)}
                   className="workspace-tour-trigger-btn"
@@ -3223,7 +3313,12 @@ export default function ProjectRoom() {
           <div className="workspace-panes">
             {/* 1. Whiteboard Pane */}
             <div id="pane-sketch" className={`workspace-pane ${activeTab === 'sketch' ? 'active' : ''}`}>
-              <div className="whiteboard-canvas-wrapper" style={{ position: 'relative' }}>
+              {!isOwner && !projectPermissions.allowDraw && (
+                <div style={{ padding: '8px 16px', background: '#fee2e2', color: '#991b1b', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid #fca5a5' }}>
+                  <Lock size={14} /> Drawing on the Sketch Board is currently disabled by the room owner.
+                </div>
+              )}
+              <div className="whiteboard-canvas-wrapper" style={{ position: 'relative', pointerEvents: (!isOwner && !projectPermissions.allowDraw) ? 'none' : 'auto', opacity: (!isOwner && !projectPermissions.allowDraw) ? 0.7 : 1 }}>
                 {/* Floating Vertical Toolbar */}
                 <div className="whiteboard-vertical-toolbar" onClick={(e) => e.stopPropagation()}>
                   <button
@@ -3465,6 +3560,11 @@ export default function ProjectRoom() {
 
             {/* 2. Document Board (TinyMCE) Pane */}
             <div id="pane-document" className={`workspace-pane ${activeTab === 'document' ? 'active' : ''}`}>
+              {!isOwner && !projectPermissions.allowDocWrite && (
+                <div style={{ padding: '8px 16px', background: '#fee2e2', color: '#991b1b', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid #fca5a5' }}>
+                  <Lock size={14} /> Document editing is currently disabled by the room owner.
+                </div>
+              )}
               {/* Owner toolbar row */}
               {isOwner && (
                 <div className="board-owner-toolbar">
@@ -3486,6 +3586,7 @@ export default function ProjectRoom() {
               )}
               <TinyMCEEditor
                 tinymceScriptSrc="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js"
+                disabled={!isOwner && !projectPermissions.allowDocWrite}
                 onInit={(evt, editor) => {
                   tinymceRef.current = editor;
                   if (docContent) {
@@ -4278,7 +4379,7 @@ export default function ProjectRoom() {
                           cursorSmoothCaretAnimation: 'on',
                           automaticLayout: true,
                           stickyScroll: { enabled: editorStickyScroll },
-                          readOnly: userRole === 'Viewer'
+                          readOnly: (!isOwner && !projectPermissions.allowCodeWrite) || userRole === 'Viewer'
                         }}
                       />
                     ) : (
@@ -5282,6 +5383,136 @@ export default function ProjectRoom() {
         <MessageSquare size={22} />
       </button>
 
+      {/* ── Room Permissions Modal (Owner) ────────────────────────────────── */}
+      {showPermissionsModal && createPortal(
+        <div className="chat-lightbox" onClick={() => setShowPermissionsModal(false)}>
+          <div className="share-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="share-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Shield size={18} /> Room Permissions
+              </h3>
+              <button onClick={() => setShowPermissionsModal(false)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <p className="share-modal-subtitle">
+              Control which tools participants can use in <strong>{projectName}</strong>.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', margin: '16px 0' }}>
+              <label className="perm-toggle-row">
+                <span className="perm-label">
+                  <Palette size={15} />
+                  Allow drawing on Sketch Board
+                </span>
+                <input
+                  type="checkbox"
+                  className="perm-checkbox"
+                  checked={projectPermissions.allowDraw}
+                  onChange={() => handleProjectPermissionToggle('allowDraw')}
+                  id="proj-perm-draw"
+                />
+                <label htmlFor="proj-perm-draw" className="toggle-switch" />
+              </label>
+
+              <label className="perm-toggle-row">
+                <span className="perm-label">
+                  <FileText size={15} />
+                  Allow editing Document Board
+                </span>
+                <input
+                  type="checkbox"
+                  className="perm-checkbox"
+                  checked={projectPermissions.allowDocWrite}
+                  onChange={() => handleProjectPermissionToggle('allowDocWrite')}
+                  id="proj-perm-doc"
+                />
+                <label htmlFor="proj-perm-doc" className="toggle-switch" />
+              </label>
+
+              <label className="perm-toggle-row">
+                <span className="perm-label">
+                  <Code2 size={15} />
+                  Allow editing Coding Board
+                </span>
+                <input
+                  type="checkbox"
+                  className="perm-checkbox"
+                  checked={projectPermissions.allowCodeWrite}
+                  onChange={() => handleProjectPermissionToggle('allowCodeWrite')}
+                  id="proj-perm-code"
+                />
+                <label htmlFor="proj-perm-code" className="toggle-switch" />
+              </label>
+            </div>
+
+            {/* Set Dedicated Owner Key Section */}
+            <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+              <h4 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Key size={14} /> Set Secret Owner Key
+              </h4>
+              <p className="permissions-hint" style={{ marginBottom: '8px' }}>
+                Set a private Owner Key so only you can claim room owner status. Regular members with the room access key cannot claim ownership.
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="password"
+                  className="owner-key-input"
+                  placeholder="New secret Owner Key..."
+                  value={newCustomOwnerKey}
+                  onChange={e => setNewCustomOwnerKey(e.target.value)}
+                  maxLength={128}
+                />
+                <button
+                  className="share-copy-btn"
+                  onClick={handleSaveCustomOwnerKey}
+                  style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+                >
+                  Save Key
+                </button>
+              </div>
+              {customOwnerKeyMsg && <p className={`owner-key-msg ${customOwnerKeyMsg.type}`} style={{ marginTop: '6px' }}>{customOwnerKeyMsg.text}</p>}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Claim Owner Status Modal (Non-Owner) ──────────────────────────── */}
+      {showOwnerKeyModal && createPortal(
+        <div className="chat-lightbox" onClick={() => setShowOwnerKeyModal(false)}>
+          <div className="share-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="share-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={18} /> Enter Owner Key
+              </h3>
+              <button onClick={() => setShowOwnerKeyModal(false)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <p className="share-modal-subtitle">
+              Enter your secret <strong>Owner Key</strong> for <strong>{projectName}</strong> to gain room owner privileges.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+              <input
+                type="password"
+                className="owner-key-input"
+                placeholder="Enter secret Owner Key..."
+                value={ownerKeyInput}
+                onChange={e => { setOwnerKeyInput(e.target.value); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') handleClaimProjectOwnership(); }}
+                maxLength={128}
+                autoFocus
+              />
+              {ownerKeyError && <p className="owner-key-msg error">{ownerKeyError}</p>}
+              {ownerKeySuccess && <p className="owner-key-msg success">{ownerKeySuccess}</p>}
+              <button
+                className="owner-key-btn"
+                onClick={handleClaimProjectOwnership}
+                disabled={claimingOwnership}
+              >
+                {claimingOwnership ? 'Verifying...' : 'Claim Ownership'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

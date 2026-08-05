@@ -37,12 +37,14 @@ export default function Home() {
   // Chat Form State bindings
   const [chatRoom, setChatRoom] = useState('');
   const [chatKey, setChatKey] = useState('');
+  const [chatOwnerKey, setChatOwnerKey] = useState('');
   const [chatError, setChatError] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
   // Project Form State bindings
   const [projectName, setProjectName] = useState('');
   const [projectKey, setProjectKey] = useState('');
+  const [projectOwnerKey, setProjectOwnerKey] = useState('');
   const [projectError, setProjectError] = useState('');
   const [projectLoading, setProjectLoading] = useState(false);
 
@@ -145,7 +147,7 @@ export default function Home() {
       const response = await fetch('/join-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: chatRoom.trim(), accessKey: chatKey.trim() })
+        body: JSON.stringify({ room: chatRoom.trim(), accessKey: chatKey.trim(), ownerKey: chatOwnerKey.trim() })
       });
 
       const data = await response.json();
@@ -189,7 +191,7 @@ export default function Home() {
       const response = await fetch('/create-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName.trim(), accessKey: projectKey.trim() })
+        body: JSON.stringify({ name: projectName.trim(), accessKey: projectKey.trim(), ownerKey: projectOwnerKey.trim() })
       });
 
       const data = await response.json();
@@ -481,6 +483,17 @@ export default function Home() {
                 autoComplete="off"
               />
             </div>
+            <div className="form-group">
+              <input
+                type="password"
+                className="form-control-translucent"
+                placeholder="Owner Secret Key (Optional for room creators)"
+                value={chatOwnerKey}
+                onChange={(e) => setChatOwnerKey(e.target.value)}
+                autoComplete="off"
+                title="Set a separate secret key to manage room permissions"
+              />
+            </div>
             <button type="submit" className="btn-white" disabled={chatLoading}>
               {chatLoading ? 'Joining...' : (
                 <>
@@ -539,6 +552,17 @@ export default function Home() {
                 onChange={(e) => setProjectKey(e.target.value)}
                 required
                 autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <input
+                type="password"
+                className="form-control-translucent"
+                placeholder="Owner Secret Key (Optional for room creators)"
+                value={projectOwnerKey}
+                onChange={(e) => setProjectOwnerKey(e.target.value)}
+                autoComplete="off"
+                title="Set a separate secret key to manage room permissions"
               />
             </div>
             <button type="submit" className="btn-white" disabled={projectLoading}>

@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall } from 'lucide-react';
+import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall, Shield, Key, Paperclip, Upload } from 'lucide-react';
 import QRCode from 'qrcode';
 import { initSocket, getCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
@@ -165,6 +165,29 @@ export default function ChatRoom() {
   const [editingText, setEditingText] = useState('');
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+
+  // ── Room Permissions (synced from server) ────────────────────────────────
+  const [roomPermissions, setRoomPermissions] = useState({
+    allowUserEdit: false,
+    allowUserDelete: false,
+    allowUserUpload: true
+  });
+
+  // ── Owner Permissions Panel (sidebar) ────────────────────────────────────
+  const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
+
+  // ── Owner Key Entry (sidebar — for claiming ownership) ───────────────────
+  const [showOwnerKeyEntry, setShowOwnerKeyEntry] = useState(false);
+  const [ownerKeyInput, setOwnerKeyInput] = useState('');
+  const [ownerKeyError, setOwnerKeyError] = useState('');
+  const [ownerKeySuccess, setOwnerKeySuccess] = useState('');
+  const [claimingOwnership, setClaimingOwnership] = useState(false);
+  const [newCustomOwnerKey, setNewCustomOwnerKey] = useState('');
+  const [customOwnerKeyMsg, setCustomOwnerKeyMsg] = useState(null);
+
+  // ── File Upload ──────────────────────────────────────────────────────────
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // ── Phase 1 states ──────────────────────────────────────────────────────────
   const [showShareModal, setShowShareModal] = useState(false);
@@ -329,6 +352,39 @@ export default function ChatRoom() {
       ));
     });
 
+    // Room permissions update
+    socket.on('room permissions', (perms) => {
+      setRoomPermissions({
+        allowUserEdit:   !!perms.allowUserEdit,
+        allowUserDelete: !!perms.allowUserDelete,
+        allowUserUpload: perms.allowUserUpload !== false
+      });
+    });
+
+    // Claim ownership result
+    socket.on('claim ownership result', ({ success, message }) => {
+      setClaimingOwnership(false);
+      if (success) {
+        setOwnerKeySuccess(message);
+        setOwnerKeyError('');
+        setOwnerKeyInput('');
+        setTimeout(() => setOwnerKeySuccess(''), 4000);
+      } else {
+        setOwnerKeyError(message);
+        setOwnerKeySuccess('');
+      }
+    });
+
+    socket.on('set owner key result', ({ success, message }) => {
+      if (success) {
+        setCustomOwnerKeyMsg({ type: 'success', text: message });
+        setNewCustomOwnerKey('');
+        setTimeout(() => setCustomOwnerKeyMsg(null), 4000);
+      } else {
+        setCustomOwnerKeyMsg({ type: 'error', text: message });
+      }
+    });
+
     // Emoji reaction update
     socket.on('reaction update', ({ messageId, reactions }) => {
       setMessages(prev => prev.map(msg =>
@@ -459,6 +515,56 @@ export default function ChatRoom() {
     }
   };
 
+  // ── Permissions panel helpers ───────────────────────────────────────────
+  const handlePermissionToggle = (key) => {
+    const updated = { ...roomPermissions, [key]: !roomPermissions[key] };
+    setRoomPermissions(updated);
+    socketRef.current?.emit('update permissions', { room: roomName, ...updated });
+  };
+
+  // ── Owner Key Claim ─────────────────────────────────────────────────────
+  const handleClaimOwnership = () => {
+    const key = ownerKeyInput.trim();
+    if (!key) { setOwnerKeyError('Please enter your access key.'); return; }
+    setClaimingOwnership(true);
+    setOwnerKeyError('');
+    setOwnerKeySuccess('');
+    socketRef.current?.emit('claim ownership', { room: roomName, accessKey: key });
+  };
+
+  const handleSaveCustomOwnerKey = () => {
+    const key = newCustomOwnerKey.trim();
+    if (!key) { setCustomOwnerKeyMsg({ type: 'error', text: 'Please enter a key.' }); return; }
+    socketRef.current?.emit('set owner key', { room: roomName, newOwnerKey: key });
+  };
+
+  // ── File Upload ─────────────────────────────────────────────────────────
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be re-uploaded
+    e.target.value = '';
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/upload', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+      const { location } = await res.json();
+      // Post the file URL as a chat message — images auto-preview, other files show as link
+      if (location && socketRef.current) {
+        socketRef.current.emit('room message', { room: roomName, msg: `${window.location.origin}${location}` });
+      }
+    } catch (err) {
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleOverlaySubmit = (room, key) => {
     sessionStorage.setItem(`accesskey_chat_${roomName}`, key);
     accessKeyRef.current = key;
@@ -574,7 +680,7 @@ export default function ChatRoom() {
                 ❓ Tour
               </button>
 
-              {isOwner && (
+              {(isOwner || roomPermissions.allowUserDelete) && (
                 <button
                   onClick={() => { setIsMultiSelectMode(prev => !prev); setSelectedMessageIds([]); }}
                   className="workspace-tour-trigger-btn"
@@ -652,17 +758,24 @@ export default function ChatRoom() {
                     style={isMultiSelectMode ? { cursor: 'pointer' } : {}}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
-                      <span className="bubble-sender">{msg.username} {isOutgoing && '(You)'}</span>
-                      {isOwner && !isEditing && !isMultiSelectMode && (
-                        <div className="message-owner-actions">
-                          <button onClick={() => { setEditingMessageId(msg._id); setEditingText(msg.msg); }} title="Edit Message">
-                            <Edit2 size={12} />
-                          </button>
-                          <button onClick={() => handleDeleteMessageClick(msg._id)} title="Delete Message">
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      )}
+                        <span className="bubble-sender">{msg.username} {isOutgoing && '(You)'}</span>
+                        {/* Show edit/delete to: owner (any msg) OR non-owner on OWN messages when permission granted */}
+                        {!isEditing && !isMultiSelectMode && msg._id && (
+                          (isOwner || (isOutgoing && (roomPermissions.allowUserEdit || roomPermissions.allowUserDelete)))
+                        ) && (
+                          <div className="message-owner-actions">
+                            {(isOwner || (isOutgoing && roomPermissions.allowUserEdit)) && (
+                              <button onClick={() => { setEditingMessageId(msg._id); setEditingText(msg.msg); }} title="Edit Message">
+                                <Edit2 size={12} />
+                              </button>
+                            )}
+                            {(isOwner || (isOutgoing && roomPermissions.allowUserDelete)) && (
+                              <button onClick={() => handleDeleteMessageClick(msg._id)} title="Delete Message">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                     </div>
 
                     {isEditing ? (
@@ -754,6 +867,27 @@ export default function ChatRoom() {
             </div>
           ) : (
             <form className="message-form" onSubmit={handleSendMessage}>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                onChange={handleFileUpload}
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.zip"
+              />
+              {/* File upload button — shown when owner allows uploads OR user is owner */}
+              {(isOwner || roomPermissions.allowUserUpload) && (
+                <button
+                  type="button"
+                  className="upload-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  title={uploading ? 'Uploading...' : 'Attach a file'}
+                  aria-label="Attach file"
+                >
+                  {uploading ? <Upload size={16} className="spin-icon" /> : <Paperclip size={16} />}
+                </button>
+              )}
               <input
                 className="chat-input"
                 value={messageInput}
@@ -787,6 +921,132 @@ export default function ChatRoom() {
                 socket={socketInstance}
                 username={username}
               />
+            </div>
+          )}
+
+          {/* ── Room Permissions Panel (Owner only) ──────────────────────── */}
+          {isOwner && (
+            <div className="sidebar-section">
+              <button
+                className="sidebar-section-toggle"
+                onClick={() => setShowPermissionsPanel(p => !p)}
+              >
+                <Shield size={13} />
+                <span>Room Permissions</span>
+                <span className="toggle-chevron">{showPermissionsPanel ? '▲' : '▼'}</span>
+              </button>
+              {showPermissionsPanel && (
+                <div className="permissions-panel">
+                  <p className="permissions-hint">Control what all users can do in this room.</p>
+                  <label className="perm-toggle-row">
+                    <span className="perm-label">
+                      <Edit2 size={12} />
+                      Allow users to edit messages
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="perm-checkbox"
+                      checked={roomPermissions.allowUserEdit}
+                      onChange={() => handlePermissionToggle('allowUserEdit')}
+                      id="perm-edit"
+                    />
+                    <label htmlFor="perm-edit" className="toggle-switch" />
+                  </label>
+                  <label className="perm-toggle-row">
+                    <span className="perm-label">
+                      <Trash2 size={12} />
+                      Allow users to delete messages
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="perm-checkbox"
+                      checked={roomPermissions.allowUserDelete}
+                      onChange={() => handlePermissionToggle('allowUserDelete')}
+                      id="perm-delete"
+                    />
+                    <label htmlFor="perm-delete" className="toggle-switch" />
+                  </label>
+                  <label className="perm-toggle-row">
+                    <span className="perm-label">
+                      <Paperclip size={12} />
+                      Allow users to upload files
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="perm-checkbox"
+                      checked={roomPermissions.allowUserUpload}
+                      onChange={() => handlePermissionToggle('allowUserUpload')}
+                      id="perm-upload"
+                    />
+                    <label htmlFor="perm-upload" className="toggle-switch" />
+                  </label>
+
+                  {/* Set Custom Owner Key Section */}
+                  <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                    <p className="permissions-hint" style={{ fontWeight: 600, color: 'var(--text-color)', marginBottom: '4px' }}>
+                      🔑 Set Secret Owner Key
+                    </p>
+                    <p className="permissions-hint" style={{ marginBottom: '8px' }}>
+                      Set a secret key to manage owner privileges.
+                    </p>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="password"
+                        className="owner-key-input"
+                        placeholder="New secret Owner Key..."
+                        value={newCustomOwnerKey}
+                        onChange={e => setNewCustomOwnerKey(e.target.value)}
+                        maxLength={128}
+                      />
+                      <button
+                        className="owner-key-btn"
+                        onClick={handleSaveCustomOwnerKey}
+                        style={{ width: 'auto', padding: '0 12px', whiteSpace: 'nowrap' }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {customOwnerKeyMsg && <p className={`owner-key-msg ${customOwnerKeyMsg.type}`} style={{ marginTop: '6px' }}>{customOwnerKeyMsg.text}</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Owner Access Key Entry (visible to non-owners) ────────────── */}
+          {!isOwner && (
+            <div className="sidebar-section">
+              <button
+                className="sidebar-section-toggle"
+                onClick={() => { setShowOwnerKeyEntry(p => !p); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+              >
+                <Key size={13} />
+                <span>Enter Owner Key</span>
+                <span className="toggle-chevron">{showOwnerKeyEntry ? '▲' : '▼'}</span>
+              </button>
+              {showOwnerKeyEntry && (
+                <div className="owner-key-panel">
+                  <p className="permissions-hint">Room owners can enter their access key here to reclaim privileges.</p>
+                  <input
+                    type="password"
+                    className="owner-key-input"
+                    placeholder="Enter access key..."
+                    value={ownerKeyInput}
+                    onChange={e => { setOwnerKeyInput(e.target.value); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleClaimOwnership(); }}
+                    maxLength={128}
+                  />
+                  {ownerKeyError && <p className="owner-key-msg error">{ownerKeyError}</p>}
+                  {ownerKeySuccess && <p className="owner-key-msg success">{ownerKeySuccess}</p>}
+                  <button
+                    className="owner-key-btn"
+                    onClick={handleClaimOwnership}
+                    disabled={claimingOwnership}
+                  >
+                    {claimingOwnership ? 'Verifying...' : 'Claim Ownership'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

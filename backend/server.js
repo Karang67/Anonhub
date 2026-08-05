@@ -341,6 +341,7 @@ mongoose.connect(MONGO_URI)
 const projectSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true, trim: true, maxlength: MAX_NAME_LEN },
     accessKey: { type: String, required: true },   // bcrypt hash
+    ownerKey: { type: String },                    // bcrypt hash for dedicated owner key
     content: { type: String, default: '' },
     whiteboard: { type: String, default: '{}' },
     code: { type: String, default: '// Start coding in VS Code style here...\n' },
@@ -349,7 +350,12 @@ const projectSchema = new mongoose.Schema({
     notes: { type: String, default: '[]' },
     polls: { type: String, default: '[]' },
     snippets: { type: String, default: '[]' },
-    ownerToken: { type: String }
+    ownerToken: { type: String },
+    permissions: {
+        allowDraw:      { type: Boolean, default: true },
+        allowDocWrite:  { type: Boolean, default: true },
+        allowCodeWrite: { type: Boolean, default: true }
+    }
 });
 
 /**
@@ -358,7 +364,13 @@ const projectSchema = new mongoose.Schema({
 const chatRoomSchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true, trim: true, maxlength: MAX_NAME_LEN },
     accessKey: { type: String, required: true },   // bcrypt hash
-    ownerToken: { type: String }
+    ownerKey: { type: String },                    // bcrypt hash for dedicated owner key
+    ownerToken: { type: String },
+    permissions: {
+        allowUserEdit:   { type: Boolean, default: false },
+        allowUserDelete: { type: Boolean, default: false },
+        allowUserUpload: { type: Boolean, default: true  }
+    }
 });
 
 /**
@@ -920,6 +932,7 @@ app.post('/create-project',
         try {
             const projectName = req.body.name.trim();
             const accessKey = req.body.accessKey.trim();
+            const rawOwnerKey = req.body.ownerKey ? String(req.body.ownerKey).trim() : '';
 
             const existingProject = await Project.findOne({ name: projectName });
             if (existingProject) {
@@ -931,28 +944,26 @@ app.post('/create-project',
                 if (!match) {
                     return res.status(403).json({ error: 'Incorrect access key for this project.' });
                 }
-                // Return redirectUrl without ownerToken to secure ownership
                 return res.status(200).json({
                     redirectUrl: `/projects/${encodeURIComponent(projectName)}`
                 });
             }
 
             const hashedKey = await bcrypt.hash(accessKey, BCRYPT_ROUNDS);
+            const hashedOwnerKey = rawOwnerKey ? await bcrypt.hash(rawOwnerKey, BCRYPT_ROUNDS) : hashedKey;
             const ownerToken = crypto.randomBytes(32).toString('hex');
-            const newProject = new Project({ name: projectName, accessKey: hashedKey, ownerToken });
+            const newProject = new Project({ name: projectName, accessKey: hashedKey, ownerKey: hashedOwnerKey, ownerToken });
             await newProject.save();
 
             // ── Auto-link: create the chat room with the same name/key/token ──────────
-            // This lets the project creator also own the chat room with the same name.
             try {
                 const existingChat = await ChatRoom.findOne({ name: projectName });
                 if (!existingChat) {
-                    const chatRoom = new ChatRoom({ name: projectName, accessKey: hashedKey, ownerToken });
+                    const chatRoom = new ChatRoom({ name: projectName, accessKey: hashedKey, ownerKey: hashedOwnerKey, ownerToken });
                     await chatRoom.save();
                     log('info', `[AUTO-LINK] Created linked chat room for project "${projectName}".`);
                 }
             } catch (chatErr) {
-                // Non-fatal: project was saved; chat link failure is acceptable
                 log('warn', `[AUTO-LINK] Could not auto-create chat room: ${chatErr.message}`);
             }
 
@@ -1036,6 +1047,7 @@ app.post('/join-chat',
         try {
             const roomName = req.body.room.trim();
             const accessKey = req.body.accessKey.trim();
+            const rawOwnerKey = req.body.ownerKey ? String(req.body.ownerKey).trim() : '';
 
             const existingRoom = await ChatRoom.findOne({ name: roomName });
             if (existingRoom) {
@@ -1047,15 +1059,15 @@ app.post('/join-chat',
                 if (!match) {
                     return res.status(403).json({ error: 'Incorrect access key for this chat room.' });
                 }
-                // Return redirectUrl without ownerToken to secure ownership
                 return res.status(200).json({
                     redirectUrl: `/chat/${encodeURIComponent(roomName)}`
                 });
             }
 
             const hashedKey = await bcrypt.hash(accessKey, BCRYPT_ROUNDS);
+            const hashedOwnerKey = rawOwnerKey ? await bcrypt.hash(rawOwnerKey, BCRYPT_ROUNDS) : hashedKey;
             const ownerToken = crypto.randomBytes(32).toString('hex');
-            const newRoom = new ChatRoom({ name: roomName, accessKey: hashedKey, ownerToken });
+            const newRoom = new ChatRoom({ name: roomName, accessKey: hashedKey, ownerKey: hashedOwnerKey, ownerToken });
             await newRoom.save();
             res.status(201).json({ redirectUrl: `/chat/${encodeURIComponent(roomName)}`, ownerToken });
 
@@ -1430,7 +1442,15 @@ io.on('connection', (socket) => {
             }
 
             socket.isOwner = isOwner;
+            socket.currentRoom = room;
             socket.emit('is owner', isOwner);
+            // Emit current room permissions so client can gate UI controls
+            const perms = chatRoom.permissions || {};
+            socket.emit('room permissions', {
+                allowUserEdit:   !!perms.allowUserEdit,
+                allowUserDelete: !!perms.allowUserDelete,
+                allowUserUpload: perms.allowUserUpload !== false // default true
+            });
             await joinRoom(room);
             socket.emit('join success', { room });
 
@@ -1520,6 +1540,12 @@ io.on('connection', (socket) => {
 
                 socket.isOwner = isOwner;
                 socket.emit('is owner', isOwner);
+                const projectPerms = refreshedProject.permissions || {};
+                socket.emit('project permissions', {
+                    allowDraw:      projectPerms.allowDraw !== false,
+                    allowDocWrite:  projectPerms.allowDocWrite !== false,
+                    allowCodeWrite: projectPerms.allowCodeWrite !== false
+                });
                 socket.emit('project content', refreshedProject.content);
                 socket.emit('whiteboard content', refreshedProject.whiteboard);
                 socket.emit('code content', {
@@ -1656,10 +1682,20 @@ io.on('connection', (socket) => {
     // ─── Event: delete message ───────────────────────────────────────────────
 
     socket.on('delete message', async (data) => {
-        const { room, messageId } = data || {};
-        if (!socket.isOwner) return;
+        const { room, messageId, senderUsername } = data || {};
         if (!isValidObjectId(messageId)) return;
         try {
+            // Owner can delete anyone's message; permitted users can only delete their own
+            if (!socket.isOwner) {
+                const chatRoom = await ChatRoom.findOne({ name: room }).select('permissions').lean();
+                const allowDelete = chatRoom?.permissions?.allowUserDelete;
+                if (!allowDelete) return;
+                // Verify the message belongs to this socket's user
+                const userData = activeUsers.get(socket.id);
+                if (!userData) return;
+                const msg = await Message.findById(messageId).select('username').lean();
+                if (!msg || msg.username !== userData.username) return;
+            }
             await Message.deleteOne({ _id: messageId });
             io.to(room).emit('message deleted', { messageId });
         } catch (err) {
@@ -1671,11 +1707,24 @@ io.on('connection', (socket) => {
 
     socket.on('delete messages', async (data) => {
         const { room, messageIds } = data || {};
-        if (!socket.isOwner) return;
         if (!Array.isArray(messageIds) || messageIds.length === 0) return;
         const validIds = messageIds.filter(id => isValidObjectId(id));
         if (validIds.length === 0) return;
         try {
+            if (!socket.isOwner) {
+                const chatRoom = await ChatRoom.findOne({ name: room }).select('permissions').lean();
+                const allowDelete = chatRoom?.permissions?.allowUserDelete;
+                if (!allowDelete) return;
+                // Non-owners can only bulk-delete their own messages
+                const userData = activeUsers.get(socket.id);
+                if (!userData) return;
+                const ownedMessages = await Message.find({ _id: { $in: validIds }, username: userData.username }).select('_id').lean();
+                const ownedIds = ownedMessages.map(m => String(m._id));
+                if (ownedIds.length === 0) return;
+                await Message.deleteMany({ _id: { $in: ownedIds } });
+                io.to(room).emit('messages deleted', { messageIds: ownedIds });
+                return;
+            }
             await Message.deleteMany({ _id: { $in: validIds } });
             io.to(room).emit('messages deleted', { messageIds: validIds });
         } catch (err) {
@@ -1688,12 +1737,94 @@ io.on('connection', (socket) => {
     socket.on('edit message', async (data) => {
         const { room, messageId } = data || {};
         const newMsg = String(data?.newMsg || '').trim().slice(0, MAX_MESSAGE_LEN);
-        if (!socket.isOwner || !newMsg || !isValidObjectId(messageId)) return;
+        if (!newMsg || !isValidObjectId(messageId)) return;
         try {
+            if (!socket.isOwner) {
+                const chatRoom = await ChatRoom.findOne({ name: room }).select('permissions').lean();
+                const allowEdit = chatRoom?.permissions?.allowUserEdit;
+                if (!allowEdit) return;
+                // Non-owners can only edit their own messages
+                const userData = activeUsers.get(socket.id);
+                if (!userData) return;
+                const msg = await Message.findById(messageId).select('username').lean();
+                if (!msg || msg.username !== userData.username) return;
+            }
             await Message.updateOne({ _id: messageId }, { msg: newMsg });
             io.to(room).emit('message edited', { messageId, newMsg });
         } catch (err) {
             log('error', 'Error editing message:', err);
+        }
+    });
+
+    // ─── Event: update permissions (owner only) ──────────────────────────────
+
+    socket.on('update permissions', async (data) => {
+        if (!socket.isOwner) {
+            socket.emit('error', 'Only the room owner can change permissions.');
+            return;
+        }
+        const room = String(data?.room || '').trim().slice(0, MAX_NAME_LEN);
+        if (!room) return;
+        const allowUserEdit   = !!data?.allowUserEdit;
+        const allowUserDelete = !!data?.allowUserDelete;
+        const allowUserUpload = data?.allowUserUpload !== false;
+        try {
+            await ChatRoom.updateOne({ name: room }, {
+                'permissions.allowUserEdit':   allowUserEdit,
+                'permissions.allowUserDelete': allowUserDelete,
+                'permissions.allowUserUpload': allowUserUpload
+            });
+            const newPerms = { allowUserEdit, allowUserDelete, allowUserUpload };
+            // Broadcast to ALL users in the room (including the owner)
+            io.to(room).emit('room permissions', newPerms);
+            log('info', `[PERMISSIONS] Room "${room}" permissions updated: edit=${allowUserEdit}, delete=${allowUserDelete}, upload=${allowUserUpload}`);
+        } catch (err) {
+            log('error', 'Error updating permissions:', err);
+        }
+    });
+
+    // ─── Event: claim ownership (re-verify access key to gain owner status) ──
+
+    socket.on('claim ownership', async (data) => {
+        const room = String(data?.room || '').trim().slice(0, MAX_NAME_LEN);
+        const accessKey = String(data?.accessKey || data?.ownerKey || '').trim().slice(0, MAX_KEY_LEN);
+        if (!room || !accessKey) {
+            socket.emit('claim ownership result', { success: false, message: 'Room name and Owner Key are required.' });
+            return;
+        }
+        if (!checkSocketRateLimit(socket.id, 'claim ownership', 5, 60_000)) {
+            socket.emit('claim ownership result', { success: false, message: 'Too many attempts. Please wait.' });
+            return;
+        }
+        try {
+            const chatRoom = await ChatRoom.findOne({ name: room });
+            if (!chatRoom) {
+                socket.emit('claim ownership result', { success: false, message: 'Room not found.' });
+                return;
+            }
+            // Strict verification: verify against ownerKey if set, otherwise fallback to accessKey
+            const targetHash = chatRoom.ownerKey || chatRoom.accessKey;
+            const match = await verifyAccessKey(
+                accessKey,
+                targetHash,
+                (newHash) => ChatRoom.updateOne({ name: room }, { ownerKey: newHash })
+            );
+            if (!match) {
+                socket.emit('claim ownership result', { success: false, message: 'Incorrect Owner Key. Room access key cannot claim ownership.' });
+                return;
+            }
+            // Grant owner status to this socket
+            socket.isOwner = true;
+            socket.currentRoom = room;
+            socket.emit('is owner', true);
+            if (chatRoom.ownerToken) {
+                socket.emit('set owner token', chatRoom.ownerToken);
+            }
+            socket.emit('claim ownership result', { success: true, message: 'Ownership claimed! You now have owner privileges.' });
+            log('info', `[CLAIM-OWNERSHIP] Socket ${socket.id} claimed ownership of room "${room}" via owner key.`);
+        } catch (err) {
+            log('error', 'Error claiming ownership:', err);
+            socket.emit('claim ownership result', { success: false, message: 'Server error.' });
         }
     });
 
@@ -1751,6 +1882,13 @@ io.on('connection', (socket) => {
         // Security: verify the socket is a member of this room before writing
         const userData = activeUsers.get(socket.id);
         if (!userData || !userData.rooms.has(name)) return;
+
+        // Check permission if not owner
+        if (!socket.isOwner) {
+            const project = await Project.findOne({ name }).select('permissions').lean();
+            if (project?.permissions?.allowDocWrite === false) return;
+        }
+
         await Project.updateOne({ name }, { content });
         socket.to(name).emit('project content', content);
         // Auto-save version every 5 updates to avoid flooding DB
@@ -1769,6 +1907,13 @@ io.on('connection', (socket) => {
         // Security: verify the socket is a member of this room before writing
         const userData = activeUsers.get(socket.id);
         if (!userData || !userData.rooms.has(name)) return;
+
+        // Check permission if not owner
+        if (!socket.isOwner) {
+            const project = await Project.findOne({ name }).select('permissions').lean();
+            if (project?.permissions?.allowDraw === false) return;
+        }
+
         await Project.updateOne({ name }, { whiteboard: content });
         socket.to(name).emit('whiteboard content', content);
     });
@@ -1784,12 +1929,138 @@ io.on('connection', (socket) => {
         // Security: verify the socket is a member of this room before writing
         const ud = activeUsers.get(socket.id);
         if (!ud || !ud.rooms.has(name)) return;
+
+        // Check permission if not owner
+        if (!socket.isOwner) {
+            const project = await Project.findOne({ name }).select('permissions').lean();
+            if (project?.permissions?.allowCodeWrite === false) return;
+        }
+
         await Project.updateOne({ name }, { code: safeCode, codeLanguage: language });
         socket.to(name).emit('code content', { code: safeCode, language });
         // Auto-save version every 5 code updates
         codeUpdateCount++;
         if (codeUpdateCount % 5 === 0) {
             saveProjectVersion(name, 'code', safeCode, language || 'javascript');
+        }
+    });
+
+    // ─── Event: update project permissions (owner only) ──────────────────────
+
+    socket.on('update project permissions', async (data) => {
+        if (!socket.isOwner) {
+            socket.emit('error', 'Only the project owner can change permissions.');
+            return;
+        }
+        const projectName = String(data?.projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!projectName) return;
+        const allowDraw      = data?.allowDraw !== false;
+        const allowDocWrite  = data?.allowDocWrite !== false;
+        const allowCodeWrite = data?.allowCodeWrite !== false;
+        try {
+            await Project.updateOne({ name: projectName }, {
+                'permissions.allowDraw':      allowDraw,
+                'permissions.allowDocWrite':  allowDocWrite,
+                'permissions.allowCodeWrite': allowCodeWrite
+            });
+            const newPerms = { allowDraw, allowDocWrite, allowCodeWrite };
+            io.to(projectName).emit('project permissions', newPerms);
+            log('info', `[PERMISSIONS] Project "${projectName}" permissions updated: draw=${allowDraw}, docWrite=${allowDocWrite}, codeWrite=${allowCodeWrite}`);
+        } catch (err) {
+            log('error', 'Error updating project permissions:', err);
+        }
+    });
+
+    // ─── Event: claim project ownership ─────────────────────────────────────
+
+    socket.on('claim project ownership', async (data) => {
+        const projectName = String(data?.projectName || '').trim().slice(0, MAX_NAME_LEN);
+        const accessKey = String(data?.accessKey || data?.ownerKey || '').trim().slice(0, MAX_KEY_LEN);
+        if (!projectName || !accessKey) {
+            socket.emit('claim project ownership result', { success: false, message: 'Project name and Owner Key are required.' });
+            return;
+        }
+        if (!checkSocketRateLimit(socket.id, 'claim project ownership', 5, 60_000)) {
+            socket.emit('claim project ownership result', { success: false, message: 'Too many attempts. Please wait.' });
+            return;
+        }
+        try {
+            const project = await Project.findOne({ name: projectName });
+            if (!project) {
+                socket.emit('claim project ownership result', { success: false, message: 'Project not found.' });
+                return;
+            }
+            // Strict verification: verify against ownerKey if set, otherwise fallback to accessKey
+            const targetHash = project.ownerKey || project.accessKey;
+            const match = await verifyAccessKey(
+                accessKey,
+                targetHash,
+                (newHash) => Project.updateOne({ name: projectName }, { ownerKey: newHash })
+            );
+            if (!match) {
+                socket.emit('claim project ownership result', { success: false, message: 'Incorrect Owner Key. Room access key cannot claim ownership.' });
+                return;
+            }
+            socket.isOwner = true;
+            socket.emit('is owner', true);
+            if (project.ownerToken) {
+                socket.emit('set owner token', project.ownerToken);
+            }
+            socket.emit('claim project ownership result', { success: true, message: 'Ownership claimed! You now have owner privileges.' });
+            log('info', `[CLAIM-OWNERSHIP] Socket ${socket.id} claimed ownership of project "${projectName}" via owner key.`);
+        } catch (err) {
+            log('error', 'Error claiming project ownership:', err);
+            socket.emit('claim project ownership result', { success: false, message: 'Server error.' });
+        }
+    });
+
+    // ─── Event: set dedicated owner key ──────────────────────────────────────
+
+    socket.on('set owner key', async (data) => {
+        const roomName = String(data?.room || data?.projectName || '').trim().slice(0, MAX_NAME_LEN);
+        const newOwnerKey = String(data?.newOwnerKey || '').trim().slice(0, MAX_KEY_LEN);
+        const currentOwnerKey = String(data?.currentOwnerKey || '').trim().slice(0, MAX_KEY_LEN);
+
+        if (!roomName || !newOwnerKey || newOwnerKey.length < 3) {
+            socket.emit('set owner key result', { success: false, message: 'Owner Key must be at least 3 characters long.' });
+            return;
+        }
+
+        try {
+            const project = await Project.findOne({ name: roomName });
+            const chatRoom = await ChatRoom.findOne({ name: roomName });
+            const targetDoc = project || chatRoom;
+
+            if (!targetDoc) {
+                socket.emit('set owner key result', { success: false, message: 'Room/Project not found.' });
+                return;
+            }
+
+            // Authorization check:
+            // 1. Socket is current room owner (isOwner === true)
+            // 2. OR caller provides valid currentOwnerKey matching existing ownerKey/accessKey
+            let authorized = socket.isOwner === true;
+            if (!authorized && currentOwnerKey) {
+                authorized = await verifyAccessKey(currentOwnerKey, targetDoc.ownerKey || targetDoc.accessKey, () => {});
+            }
+
+            if (!authorized) {
+                socket.emit('set owner key result', { success: false, message: 'Unauthorized. Only the room owner can set a secret owner key.' });
+                return;
+            }
+
+            const hashedOwnerKey = await bcrypt.hash(newOwnerKey, BCRYPT_ROUNDS);
+            await Project.updateOne({ name: roomName }, { ownerKey: hashedOwnerKey });
+            await ChatRoom.updateOne({ name: roomName }, { ownerKey: hashedOwnerKey });
+
+            socket.isOwner = true;
+            socket.emit('is owner', true);
+
+            socket.emit('set owner key result', { success: true, message: 'Secret Owner Key set successfully! Nobody can override this key without knowing it.' });
+            log('info', `[SET-OWNER-KEY] Dedicated Owner Key updated for room/project "${roomName}".`);
+        } catch (err) {
+            log('error', 'Error setting owner key:', err);
+            socket.emit('set owner key result', { success: false, message: 'Server error setting owner key.' });
         }
     });
 
