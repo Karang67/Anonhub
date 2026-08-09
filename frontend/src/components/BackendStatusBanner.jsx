@@ -63,7 +63,7 @@ export default function BackendStatusBanner() {
         <span className="status-text">
           {status === 'waking' ? (
             <>
-              <strong>Connecting to AnonHub server...</strong> Render backend is waking up (takes ~30s on free tier).
+              <strong>Connecting to AnonHub server...</strong> Waking up backend service, please wait a moment.
             </>
           ) : (
             <>
