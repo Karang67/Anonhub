@@ -207,14 +207,24 @@ async function sendFeedbackEmail(mailOpts, fbDetails = {}) {
 }
 
 // In development: allow ALL origins so any device on the local network can connect.
-// In production: lock down to the list in ALLOWED_ORIGINS or FRONTEND_URL env vars.
-const PROD_ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-    : (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []);
+const rawAllowed = [
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []),
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+].map(o => o.trim().replace(/\/+$/, '')).filter(Boolean);
 
-// Backwards-compatible alias: some older branches reference `ALLOWED_ORIGINS`.
-// Ensure it always exists to avoid ReferenceError during startup.
+const PROD_ALLOWED_ORIGINS = Array.from(new Set(rawAllowed));
 const ALLOWED_ORIGINS = PROD_ALLOWED_ORIGINS;
+
+function isOriginAllowed(origin) {
+    if (!origin) return true;
+    if (!IS_PROD) return true;
+    const cleanOrigin = origin.trim().replace(/\/+$/, '');
+    if (PROD_ALLOWED_ORIGINS.length === 0) return true;
+    if (PROD_ALLOWED_ORIGINS.includes(cleanOrigin)) return true;
+    // Allow any Vercel frontend origin (*.vercel.app)
+    if (cleanOrigin.endsWith('.vercel.app')) return true;
+    return false;
+}
 
 
 // File upload limits
@@ -302,11 +312,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: (origin, callback) => {
-            if (!IS_PROD || !origin) {
-                // Development or server-to-server: allow connection
-                return callback(null, true);
-            }
-            if (PROD_ALLOWED_ORIGINS.length === 0 || PROD_ALLOWED_ORIGINS.includes(origin)) {
+            if (isOriginAllowed(origin)) {
                 return callback(null, true);
             }
             log('warn', `[CORS] Socket.IO Blocked origin: ${origin}`);
@@ -499,13 +505,10 @@ app.use(helmet({
 }));
 
 // CORS for Express HTTP routes
-// Development: open to all origins (LAN access). Production: env-configured whitelist.
+// Development: open to all origins (LAN access). Production: env-configured whitelist + *.vercel.app.
 const corsOptions = {
     origin: (origin, callback) => {
-        if (!origin || !IS_PROD) {
-            return callback(null, true);
-        }
-        if (PROD_ALLOWED_ORIGINS.length === 0 || PROD_ALLOWED_ORIGINS.includes(origin)) {
+        if (isOriginAllowed(origin)) {
             return callback(null, true);
         }
         log('warn', `[CORS] HTTP Blocked origin: ${origin}`);
