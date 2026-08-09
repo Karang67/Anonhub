@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config';
 import { 
   MessageSquare, 
   FolderPlus, 
@@ -144,7 +145,7 @@ export default function Home() {
 
     setChatLoading(true);
     try {
-      const response = await fetch('/join-chat', {
+      const response = await fetch(getApiUrl('/join-chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room: chatRoom.trim(), accessKey: chatKey.trim(), ownerKey: chatOwnerKey.trim() })
@@ -188,7 +189,7 @@ export default function Home() {
 
     setProjectLoading(true);
     try {
-      const response = await fetch('/create-project', {
+      const response = await fetch(getApiUrl('/create-project'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: projectName.trim(), accessKey: projectKey.trim(), ownerKey: projectOwnerKey.trim() })

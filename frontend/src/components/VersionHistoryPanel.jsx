@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, RotateCcw, Clock, FileText, Code2, Copy, Check, Trash2 } from 'lucide-react';
+import { getApiUrl } from '../config';
 import './VersionHistoryPanel.css';
 
 function formatRelativeTime(dateStr) {
@@ -37,7 +38,7 @@ export default function VersionHistoryPanel({ projectName, type, socket, isOwner
   const fetchVersions = useCallback(() => {
     if (!projectName || !type) return;
     setIsLoading(true);
-    fetch(`/api/versions/${encodeURIComponent(projectName)}?type=${type}`)
+    fetch(getApiUrl(`/api/versions/${encodeURIComponent(projectName)}?type=${type}`))
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setVersions(data);
@@ -92,7 +93,7 @@ export default function VersionHistoryPanel({ projectName, type, socket, isOwner
 
   const handleCopy = async (versionId) => {
     try {
-      const res = await fetch(`/api/versions/${versionId}/content`);
+      const res = await fetch(getApiUrl(`/api/versions/${versionId}/content`));
       if (!res.ok) throw new Error();
       const data = await res.json();
       await navigator.clipboard.writeText(data.content);
@@ -106,7 +107,7 @@ export default function VersionHistoryPanel({ projectName, type, socket, isOwner
   const handleDelete = async (versionId) => {
     if (!window.confirm('Permanently delete this version snapshot?')) return;
     try {
-      const res = await fetch(`/api/versions/${versionId}`, {
+      const res = await fetch(getApiUrl(`/api/versions/${versionId}`), {
         method: 'DELETE'
       });
       if (!res.ok) throw new Error();

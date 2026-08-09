@@ -15,6 +15,7 @@ import {
   Copy, Bold, Italic, Underline, AlignLeft, AlignCenter, 
   AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare, HelpCircle
 } from 'lucide-react';
+import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import './OfficeBoard.css';
 
@@ -366,7 +367,7 @@ export default function OfficeBoard() {
     setOverlayError('');
 
     try {
-      const res = await fetch('/create-office', {
+      const res = await fetch(getApiUrl('/create-office'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: roomInput.trim(), accessKey: accessKeyInput.trim() })
@@ -701,7 +702,7 @@ export default function OfficeBoard() {
     setIsFormattingAi(true);
     setViewMode('original'); // Force display of original during processing
     try {
-      const response = await fetch('/api/ai-chat', {
+      const response = await fetch(getApiUrl('/api/ai-chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

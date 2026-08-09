@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config';
 import './AdminFeedback.css';
 
 export default function AdminFeedback() {
@@ -15,8 +16,8 @@ export default function AdminFeedback() {
       setError('');
       try {
         const [feedbackRes, statusRes] = await Promise.all([
-          fetch('/api/admin/feedback', { credentials: 'include' }),
-          fetch('/api/admin/feedback/status', { credentials: 'include' })
+          fetch(getApiUrl('/api/admin/feedback'), { credentials: 'include' }),
+          fetch(getApiUrl('/api/admin/feedback/status'), { credentials: 'include' })
         ]);
 
         if (feedbackRes.status === 403 || statusRes.status === 403) {

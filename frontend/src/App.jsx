@@ -10,6 +10,7 @@ import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import AIChatBot from './components/AIChatBot';
+import BackendStatusBanner from './components/BackendStatusBanner';
 
 // Lazy load pages to decrease initial bundle size
 const Home = lazy(() => import('./pages/Home'));
@@ -154,6 +155,9 @@ function AppContent() {
 
       {/* Global Floating AI Chatbot Widget */}
       <AIChatBot />
+
+      {/* Render Backend Health & Cold-Start Monitoring Banner */}
+      <BackendStatusBanner />
     </div>
   );
 }

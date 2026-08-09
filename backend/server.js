@@ -66,7 +66,7 @@ const os = require('os');
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_PROD = NODE_ENV === 'production';
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 // Support both `MONGODB_URI` (preferred) and legacy `MONGO_URI` env var names.
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/anonhub-db';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
@@ -207,10 +207,10 @@ async function sendFeedbackEmail(mailOpts, fbDetails = {}) {
 }
 
 // In development: allow ALL origins so any device on the local network can connect.
-// In production: lock down to the comma-separated list in ALLOWED_ORIGINS env var.
+// In production: lock down to the list in ALLOWED_ORIGINS or FRONTEND_URL env vars.
 const PROD_ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : [];
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []);
 
 // Backwards-compatible alias: some older branches reference `ALLOWED_ORIGINS`.
 // Ensure it always exists to avoid ReferenceError during startup.
@@ -302,18 +302,17 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: (origin, callback) => {
-            if (!IS_PROD) {
-                // Development: allow ALL origins so any LAN device can connect
+            if (!IS_PROD || !origin) {
+                // Development or server-to-server: allow connection
                 return callback(null, true);
             }
-            // Production: strict whitelist from ALLOWED_ORIGINS env var
-            if (!origin || PROD_ALLOWED_ORIGINS.includes(origin)) {
-                callback(null, true);
-            } else {
-                log('warn', `[CORS] Blocked origin: ${origin}`);
-                callback(new Error(`Origin ${origin} is not allowed.`));
+            if (PROD_ALLOWED_ORIGINS.length === 0 || PROD_ALLOWED_ORIGINS.includes(origin)) {
+                return callback(null, true);
             }
+            log('warn', `[CORS] Socket.IO Blocked origin: ${origin}`);
+            return callback(new Error(`Origin ${origin} is not allowed.`));
         },
+        credentials: true,
         methods: ['GET', 'POST']
     }
 });
@@ -502,17 +501,19 @@ app.use(helmet({
 // CORS for Express HTTP routes
 // Development: open to all origins (LAN access). Production: env-configured whitelist.
 const corsOptions = {
-    origin: IS_PROD
-        ? (origin, callback) => {
-            if (!origin || PROD_ALLOWED_ORIGINS.includes(origin)) {
-                callback(null, true);
-            } else {
-                callback(new Error(`Origin ${origin} is not allowed.`));
-            }
+    origin: (origin, callback) => {
+        if (!origin || !IS_PROD) {
+            return callback(null, true);
         }
-        : true, // allow all in dev
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+        if (PROD_ALLOWED_ORIGINS.length === 0 || PROD_ALLOWED_ORIGINS.includes(origin)) {
+            return callback(null, true);
+        }
+        log('warn', `[CORS] HTTP Blocked origin: ${origin}`);
+        return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS', 'PUT', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key', 'ngrok-skip-browser-warning']
 };
 app.use(cors(corsOptions));
 
@@ -545,6 +546,13 @@ const authLimiter = makeRateLimiter(60_000, 20, 'Too many auth attempts. Max 20 
 
 // Apply general API rate limiter to all /api/* routes
 app.use('/api/', apiLimiter);
+
+/**
+ * @api {get} /api/health Backend Availability & Health Check
+ */
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 app.post('/api/admin/login', authLimiter, async (req, res) => {
     const { username, password } = req.body || {};

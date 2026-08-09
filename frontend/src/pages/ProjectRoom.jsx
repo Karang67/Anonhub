@@ -17,6 +17,7 @@ import { Editor as TinyMCEEditor } from '@tinymce/tinymce-react';
 import Editor from '@monaco-editor/react';
 import QRCode from 'qrcode';
 
+import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
@@ -2006,14 +2007,14 @@ export default function ProjectRoom() {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/upload', {
+    fetch(getApiUrl('/upload'), {
       method: 'POST',
       body: formData
     })
       .then(res => res.json())
       .then(json => {
         if (json.location) {
-          onUploadSuccess(file.name, json.location);
+          onUploadSuccess(file.name, getApiUrl(json.location));
         }
       })
       .catch(err => {
@@ -2448,7 +2449,7 @@ export default function ProjectRoom() {
     setAiMessageInput('');
 
     try {
-      const response = await fetch('/api/ai-chat', {
+      const response = await fetch(getApiUrl('/api/ai-chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2473,7 +2474,7 @@ export default function ProjectRoom() {
   const runLocalCompiler = async (code, language) => {
     setTerminalOutput('⏳ Executing code via local compiler...');
     try {
-      const response = await fetch('/api/compile', {
+      const response = await fetch(getApiUrl('/api/compile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, language })
@@ -2722,7 +2723,7 @@ export default function ProjectRoom() {
     setChangeKeyLoading(true);
     setChangeKeyError('');
     try {
-      const res = await fetch(`/api/project/${encodeURIComponent(projectName)}/change-key`, {
+      const res = await fetch(getApiUrl(`/api/project/${encodeURIComponent(projectName)}/change-key`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ownerToken, newKey: trimmed })
@@ -2805,7 +2806,7 @@ export default function ProjectRoom() {
 
     setIsFormattingAi(true);
     try {
-      const response = await fetch('/api/ai-chat', {
+      const response = await fetch(getApiUrl('/api/ai-chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3623,7 +3624,7 @@ export default function ProjectRoom() {
                           formData.append('file', file);
 
                           editor.setProgressState(true);
-                          fetch('/upload', {
+                          fetch(getApiUrl('/upload'), {
                             method: 'POST',
                             body: formData
                           })
@@ -3631,8 +3632,9 @@ export default function ProjectRoom() {
                             .then(json => {
                               editor.setProgressState(false);
                               editor.selection.collapse(false);
-                              editor.insertContent(`<a href="${json.location}" target="_blank" download="${file.name}" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--light-color); color: var(--text-color); font-weight: 700; text-decoration: none; margin: 4px 0;">📎 Download ${file.name}</a>&nbsp;`);
-                              onUploadSuccess(file.name, json.location);
+                              const fullUrl = getApiUrl(json.location);
+                              editor.insertContent(`<a href="${fullUrl}" target="_blank" download="${file.name}" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--light-color); color: var(--text-color); font-weight: 700; text-decoration: none; margin: 4px 0;">📎 Download ${file.name}</a>&nbsp;`);
+                              onUploadSuccess(file.name, fullUrl);
                             })
                             .catch(err => {
                               editor.setProgressState(false);
@@ -3658,7 +3660,7 @@ export default function ProjectRoom() {
                           formData.append('file', file);
 
                           editor.setProgressState(true);
-                          fetch('/upload', {
+                          fetch(getApiUrl('/upload'), {
                             method: 'POST',
                             body: formData
                           })
@@ -3666,8 +3668,9 @@ export default function ProjectRoom() {
                             .then(json => {
                               editor.setProgressState(false);
                               editor.selection.collapse(false);
-                              editor.insertContent(`<img src="${json.location}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0;" />&nbsp;`);
-                              onUploadSuccess(file.name, json.location);
+                              const fullUrl = getApiUrl(json.location);
+                              editor.insertContent(`<img src="${fullUrl}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0;" />&nbsp;`);
+                              onUploadSuccess(file.name, fullUrl);
                             })
                             .catch(err => {
                               editor.setProgressState(false);
@@ -3683,7 +3686,7 @@ export default function ProjectRoom() {
                     const formData = new FormData();
                     formData.append('file', blobInfo.blob(), blobInfo.filename());
 
-                    fetch('/upload', {
+                    fetch(getApiUrl('/upload'), {
                       method: 'POST',
                       body: formData
                     })
@@ -3693,8 +3696,9 @@ export default function ProjectRoom() {
                       })
                       .then(json => {
                         if (!json || typeof json.location !== 'string') throw new Error('Invalid response');
-                        resolve(json.location);
-                        onUploadSuccess(blobInfo.filename(), json.location);
+                        const fullUrl = getApiUrl(json.location);
+                        resolve(fullUrl);
+                        onUploadSuccess(blobInfo.filename(), fullUrl);
                       })
                       .catch(err => {
                         reject('Upload failed: ' + err.message);
@@ -3715,14 +3719,15 @@ export default function ProjectRoom() {
                       const formData = new FormData();
                       formData.append('file', file);
 
-                      fetch('/upload', {
+                      fetch(getApiUrl('/upload'), {
                         method: 'POST',
                         body: formData
                       })
                         .then(res => res.json())
                         .then(json => {
-                          callback(json.location, { text: file.name, title: file.name });
-                          onUploadSuccess(file.name, json.location);
+                          const fullUrl = getApiUrl(json.location);
+                          callback(fullUrl, { text: file.name, title: file.name });
+                          onUploadSuccess(file.name, fullUrl);
                         })
                         .catch(err => {
                           console.error('File upload failed:', err);

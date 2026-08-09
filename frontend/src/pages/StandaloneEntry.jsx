@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AccessKeyModal from '../components/AccessKeyModal';
 import { getCookie, setCookie } from '../services/socket';
+import { getApiUrl } from '../config';
 
 /**
  * StandaloneEntry Component
@@ -62,7 +63,7 @@ export default function StandaloneEntry({ tabType }) {
       const endpoint = isChat ? '/join-chat' : '/create-project';
       const payload = isChat ? { room: roomName, accessKey } : { name: roomName, accessKey };
 
-      const response = await fetch(endpoint, {
+      const response = await fetch(getApiUrl(endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

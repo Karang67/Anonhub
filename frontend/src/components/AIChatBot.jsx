@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, X, Send, Sparkles, MessageCircle, RefreshCw } from 'lucide-react';
+import { getApiUrl } from '../config';
 import './AIChatBot.css';
 
 export default function AIChatBot() {
@@ -182,7 +183,7 @@ export default function AIChatBot() {
     }));
 
     try {
-      const response = await fetch('/api/ai-chat', {
+      const response = await fetch(getApiUrl('/api/ai-chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history: historyPayload })

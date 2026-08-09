@@ -1,0 +1,59 @@
+.backend-status-banner {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+.backend-status-banner.waking {
+  border-left: 4px solid #3b82f6;
+}
+
+.backend-status-banner.error {
+  border-left: 4px solid #ef4444;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spin-icon {
+  animation: spin 1.5s linear infinite;
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.status-text {
+  line-height: 1.4;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

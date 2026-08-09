@@ -6,6 +6,7 @@
  */
 
 import { io } from 'socket.io-client';
+import { SOCKET_URL } from '../config';
 
 /**
  * Parses and retrieves client cookies matching a specific key name.
@@ -28,7 +29,7 @@ export function getCookie(name) {
  * Initializes and returns a new Socket.IO client instance.
  * Binds saved anonymous pseudonyms inside the connection authentication parameters
  * to let the backend reuse existing user descriptors.
- * Connects directly to the current host origin (since the Express app serves the client bundles).
+ * Connects to configured SOCKET_URL (or host origin when fallback).
  * Note: Configured with `autoConnect: false` to allow callers to control the connection lifespan.
  *
  * Priority: sessionStorage (current browser session) > cookie (set on page load).
@@ -40,7 +41,7 @@ export function initSocket() {
   // Prefer sessionStorage (scoped to current browser session) over cookie
   const savedUsername = sessionStorage.getItem('anonhub-username') || getCookie('anonhub-username') || '';
   const sessionId = getCookie('anonhub-session-id') || '';
-  return io({
+  return io(SOCKET_URL || undefined, {
     auth: {
       username: savedUsername,
       sessionId: sessionId
@@ -48,8 +49,9 @@ export function initSocket() {
     extraHeaders: {
       'ngrok-skip-browser-warning': 'true'
     },
+    withCredentials: true,
     reconnection: true,
-    reconnectionAttempts: 10,
+    reconnectionAttempts: 20,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 20000,

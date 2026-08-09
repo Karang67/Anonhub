@@ -41,6 +41,7 @@ import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff,
   Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw, Info
 } from 'lucide-react';
+import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
@@ -764,7 +765,7 @@ export default function CallRoom() {
       if (!savedKey) return;
 
       try {
-        const res = await fetch('/create-project', {
+        const res = await fetch(getApiUrl('/create-project'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: roomName, accessKey: savedKey })
@@ -787,7 +788,7 @@ export default function CallRoom() {
   const handleAuthSubmit = async (rName, accessKey) => {
     setAuthError('');
     try {
-      const res = await fetch('/create-project', {
+      const res = await fetch(getApiUrl('/create-project'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: rName, accessKey })

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config';
 import './AdminLogin.css';
 
 export default function AdminLogin() {
@@ -15,7 +16,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await fetch(getApiUrl('/api/admin/login'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiUrl } from '../config';
 import './FeedbackForm.css';
 
 export default function FeedbackForm({ onSuccess }) {
@@ -81,7 +82,7 @@ export default function FeedbackForm({ onSuccess }) {
       if (cleanName) payload.name = cleanName;
       if (cleanEmail) payload.email = cleanEmail;
 
-      const res = await fetch('/api/feedback', {
+      const res = await fetch(getApiUrl('/api/feedback'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

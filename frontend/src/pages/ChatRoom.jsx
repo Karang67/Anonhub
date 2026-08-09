@@ -17,6 +17,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall, Shield, Key, Paperclip, Upload } from 'lucide-react';
 import QRCode from 'qrcode';
+import { getApiUrl } from '../config';
 import { initSocket, getCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
 import AccessKeyModal from '../components/AccessKeyModal';
@@ -434,7 +435,7 @@ export default function ChatRoom() {
     const before = oldest ? new Date(oldest.timestamp).toISOString() : new Date().toISOString();
     setLoadingOlder(true);
     try {
-      const res = await fetch(`/api/messages/${encodeURIComponent(roomName)}?before=${encodeURIComponent(before)}&limit=50`);
+      const res = await fetch(getApiUrl(`/api/messages/${encodeURIComponent(roomName)}?before=${encodeURIComponent(before)}&limit=50`));
       if (!res.ok) throw new Error('Failed');
       const older = await res.json();
       if (older.length === 0) {
@@ -548,7 +549,7 @@ export default function ChatRoom() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('/upload', { method: 'POST', body: formData });
+      const res = await fetch(getApiUrl('/upload'), { method: 'POST', body: formData });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Upload failed');
@@ -556,7 +557,7 @@ export default function ChatRoom() {
       const { location } = await res.json();
       // Post the file URL as a chat message — images auto-preview, other files show as link
       if (location && socketRef.current) {
-        socketRef.current.emit('room message', { room: roomName, msg: `${window.location.origin}${location}` });
+        socketRef.current.emit('room message', { room: roomName, msg: getApiUrl(location) });
       }
     } catch (err) {
       alert(`Upload failed: ${err.message}`);
