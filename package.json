@@ -5,8 +5,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node backend/server.js",
-    "build": "cd frontend && npm install --include=dev && npm run build",
-    "postinstall": "cd frontend && npm ci --include=dev && npm run build",
+    "build": "node -e \"const fs=require('fs'),{execSync}=require('child_process');if(fs.existsSync('frontend')){execSync('cd frontend && npm run build',{stdio:'inherit'});}else{execSync('npx vite build',{stdio:'inherit'});}\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
