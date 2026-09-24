@@ -291,3 +291,40 @@
   from { transform: translateY(-16px) scale(0.98); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
+
+@media (max-width: 600px) {
+  .omni-search-backdrop {
+    padding: 16px 8px;
+    align-items: center;
+  }
+
+  .omni-search-modal {
+    max-height: 88dvh;
+    border-radius: 14px;
+    width: 100%;
+  }
+
+  .omni-search-form {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  .omni-search-input {
+    font-size: 0.92rem;
+  }
+
+  .omni-type-pills {
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  .omni-type-pill {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+  }
+
+  .omni-footer-hints {
+    display: none;
+  }
+}
+

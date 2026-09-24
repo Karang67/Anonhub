@@ -624,8 +624,8 @@
 @media (max-width: 768px) {
   .global-chat-page {
     padding: 0;
-    height: calc(100vh - 56px);
-    max-height: calc(100vh - 56px);
+    height: calc(100dvh - var(--header-height, 52px));
+    max-height: calc(100dvh - var(--header-height, 52px));
   }
 
   .global-chat-card {
@@ -633,6 +633,7 @@
     border-left: none;
     border-right: none;
     border-bottom: none;
+    height: 100%;
   }
 
   .gc-header {
@@ -645,23 +646,94 @@
 
   .gc-notice-strip {
     font-size: 0.72rem;
-    padding: 4px 10px;
+    padding: 6px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: space-between;
+  }
+
+  .gc-notice-strip span:first-child {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .gc-memory-tag {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    margin-left: auto;
   }
 
   .gc-message-row {
-    max-width: 90%;
+    max-width: 92%;
   }
 
   .gc-messages-wrap {
-    padding: 12px;
+    padding: 12px 10px;
+  }
+
+  .gc-footer {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) 10px;
+  }
+
+  .gc-input {
+    padding: 10px 50px 10px 12px;
+    font-size: 0.9rem;
   }
 }
 
 @media (max-width: 480px) {
+  .global-chat-page {
+    height: calc(100dvh - var(--header-height, 48px));
+    max-height: calc(100dvh - var(--header-height, 48px));
+  }
+
+  .gc-header {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .gc-icon-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .gc-title {
+    font-size: 0.92rem;
+  }
+
+  .gc-online-badge {
+    font-size: 0.72rem;
+  }
+
+  .gc-header-right {
+    gap: 6px;
+  }
+
+  .gc-header-right .gc-user-pill {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+
   .gc-header-right .gc-user-pill span {
-    max-width: 90px;
+    max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .gc-message-row {
+    max-width: 96%;
+  }
+
+  .gc-bubble {
+    padding: 8px 12px;
+    font-size: 0.88rem;
+  }
+
+  .gc-send-btn {
+    width: 40px;
+    height: 40px;
+  }
 }
+

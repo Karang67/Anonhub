@@ -428,16 +428,22 @@
     display: none;
   }
   .wb-btn-label {
-    display: none;
+    display: none !important;
   }
   .whiteboard-header {
-    padding: 0 8px;
+    padding: 0 10px;
     height: 48px;
     min-height: 48px;
   }
   .wb-action-btn {
-    padding: 5px 8px !important;
+    padding: 6px !important;
     font-size: 0.75rem !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
   }
   .wb-modal-card {
     width: 94vw !important;
@@ -445,14 +451,62 @@
   }
 }
 
-@media (max-width: 480px) {
-  .wb-brand-name {
-    font-size: 0.9rem;
+@media (max-width: 600px) {
+  .whiteboard-page-wrapper {
+    height: 100dvh;
+    overflow: hidden;
   }
+
+  .whiteboard-header {
+    padding: 0 8px;
+    height: 46px;
+    min-height: 46px;
+  }
+
+  .wb-brand-name {
+    font-size: 0.95rem;
+  }
+
   .wb-badge-pill {
     display: none;
   }
+
+  .wb-action-btn.wb-btn-export,
+  .wb-action-btn.wb-btn-switch {
+    display: none !important;
+  }
+
+  .wb-action-btn {
+    padding: 5px !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+  }
+
   .wb-header-right {
     gap: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .whiteboard-main-viewport {
+    height: calc(100dvh - 46px);
+    overflow: hidden;
   }
 }
+
+@media (max-width: 400px) {
+  .wb-brand-name {
+    font-size: 0.88rem;
+  }
+
+  .wb-action-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+  }
+
+  .wb-header-right {
+    gap: 3px;
+  }
+}
+

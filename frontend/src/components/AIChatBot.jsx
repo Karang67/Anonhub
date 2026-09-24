@@ -7,13 +7,25 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Bot, X, Send, Sparkles, MessageCircle, RefreshCw } from 'lucide-react';
 import { getApiUrl } from '../config';
 import { useFeatureAccess } from '../context/FeatureAccessContext';
 import './AIChatBot.css';
 
 export default function AIChatBot() {
+  const location = useLocation();
+  const isWorkspaceView = location.pathname.startsWith('/global-chat') ||
+                          location.pathname.startsWith('/chat') ||
+                          location.pathname.startsWith('/projects') ||
+                          location.pathname.startsWith('/office') ||
+                          location.pathname.startsWith('/call') ||
+                          location.pathname.startsWith('/document') ||
+                          location.pathname.startsWith('/code') ||
+                          location.pathname.startsWith('/whiteboard');
+
   const { isFeatureVisible, can } = useFeatureAccess();
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -271,7 +283,7 @@ export default function AIChatBot() {
       {/* Draggable Bubble Button */}
       <div
         ref={containerRef}
-        className={`ai-chatbot-bubble-wrapper ${isDragging ? 'dragging' : ''}`}
+        className={`ai-chatbot-bubble-wrapper ${isDragging ? 'dragging' : ''} ${isWorkspaceView ? 'in-workspace-view' : ''}`}
         style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : {}}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -292,7 +304,7 @@ export default function AIChatBot() {
 
       {/* Floating Chat Window — positioned absolutely based on bubble location */}
       <div
-        className={`ai-chatbot-window ${isOpen ? 'open' : ''}`}
+        className={`ai-chatbot-window ${isOpen ? 'open' : ''} ${isWorkspaceView ? 'in-workspace-view' : ''}`}
         style={windowStyle}
       >
         {/* Header bar */}

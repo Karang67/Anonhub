@@ -1301,7 +1301,7 @@ function processDataMesh(buffer) {
             <div className="footer-logo">
               <Shield size={20} className="footer-shield-icon" />
               <h3>AnonHub</h3>
-              <span className="footer-badge">Beta</span>
+              <span className="footer-badge">2.O</span>
             </div>
             <p className="footer-tagline">
               Real-Time Anonymous Collaboration Platform. Create, code, write, and ideate together with complete privacy.

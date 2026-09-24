@@ -6,6 +6,8 @@
  * import/export (.xlsx/.csv), real-time peer cursors, find/replace, and Trinetra AI assistant.
  */
 
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
 // XLSX library is loaded dynamically on demand to optimize initial bundle size
 const getXLSX = async () => await import('xlsx');
 import {

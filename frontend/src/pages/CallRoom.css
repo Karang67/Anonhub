@@ -706,3 +706,48 @@
     background: #dc2626 !important;
   }
 }
+
+@media (max-width: 480px) {
+  .callroom-root {
+    height: calc(100dvh - var(--header-height, 48px));
+  }
+
+  .callroom-header {
+    padding: 6px 8px;
+    min-height: 42px;
+  }
+
+  .callroom-title {
+    font-size: 0.75rem;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .callroom-controls {
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
+    gap: 4px;
+    flex-wrap: nowrap;
+    justify-content: center;
+    overflow-x: auto;
+  }
+
+  .callroom-ctrl-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .callroom-ctrl-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .callroom-ctrl-btn.leave {
+    padding: 0 10px;
+    width: auto;
+    font-size: 0.75rem;
+  }
+}

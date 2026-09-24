@@ -50,7 +50,7 @@ export default function Help() {
   return (
     <main className="page-container">
       {/* Title Header with Icon */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '40px' }}>
+      <div className="help-header">
         <HelpCircle size={36} color="var(--primary-color)" />
         <h2 className="title-center" style={{ margin: 0 }}>Help & FAQs</h2>
       </div>

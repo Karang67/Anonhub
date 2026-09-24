@@ -401,33 +401,96 @@ html[data-theme="dark"] .ai-message-row.ai .ai-message-bubble {
 /* ── Mobile constraints ───────────────────────────────────── */
 @media (max-width: 768px) {
   .ai-chatbot-bubble-wrapper {
-    position: fixed !important;
-    top: auto !important;
-    left: auto !important;
-    right: 16px !important;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
-    transform: none !important;
-    z-index: 9999 !important;
+    position: fixed;
+    right: 16px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    z-index: 9990;
+    width: 50px;
+    height: 50px;
+  }
+
+  .ai-chatbot-bubble-wrapper .ai-chatbot-bubble {
+    width: 50px;
+    height: 50px;
+  }
+
+  /* When on a chat or workspace page with a fixed bottom bar, elevate above the bar */
+  .ai-chatbot-bubble-wrapper.in-workspace-view {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
   .ai-chatbot-window {
     position: fixed !important;
     top: auto !important;
     bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
-    left: 12px !important;
-    right: 12px !important;
+    left: 10px !important;
+    right: 10px !important;
     width: auto !important;
-    max-width: calc(100vw - 24px) !important;
-    height: min(480px, 72vh) !important;
-    transform: none !important;
+    max-width: calc(100vw - 20px) !important;
+    height: min(480px, 68vh) !important;
+    border-radius: 16px !important;
+    z-index: 9995 !important;
+  }
+
+  .ai-chatbot-window.in-workspace-view {
+    bottom: calc(138px + env(safe-area-inset-bottom, 0px)) !important;
+    height: min(440px, 60vh) !important;
+  }
+
+  .ai-drag-hint {
+    display: none;
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 480px) {
+  .ai-chatbot-bubble-wrapper {
+    right: 12px;
+    width: 46px;
+    height: 46px;
+  }
+
+  .ai-chatbot-bubble-wrapper .ai-chatbot-bubble {
+    width: 46px;
+    height: 46px;
+  }
+
+  .ai-chatbot-bubble svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .ai-chatbot-bubble-wrapper.in-workspace-view {
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  }
+
   .ai-chatbot-window {
-    width: calc(100vw - 24px) !important;
-    height: min(460px, 70vh) !important;
-    left: 12px !important;
-    right: 12px !important;
+    left: 8px !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px) !important;
+    height: min(450px, 66vh) !important;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .ai-chatbot-window.in-workspace-view {
+    bottom: calc(130px + env(safe-area-inset-bottom, 0px)) !important;
+    height: min(420px, 58vh) !important;
+  }
+
+  .ai-chat-header {
+    padding: 10px 14px;
+  }
+
+  .ai-chat-header-title {
+    font-size: 0.9rem;
+  }
+
+  .ai-chat-footer {
+    padding: 8px 10px;
+  }
+
+  .ai-chat-input {
+    font-size: 0.85rem;
+    padding: 8px 10px;
   }
 }
+

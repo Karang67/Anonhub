@@ -537,28 +537,35 @@
 
 @media (max-width: 768px) {
   .word-document-scroll-viewport {
-    padding: 12px 6px;
+    padding: 10px 6px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .word-paper-page {
     width: 100% !important;
+    max-width: 100% !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
     padding: 16px 12px !important;
     border-radius: 6px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    min-height: auto !important;
   }
 
   .word-ribbon .ribbon-brand-tag {
     display: none;
   }
 
-  .word-ribbon-tabs-header {
+  .word-ribbon .ribbon-tabs-header {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
     scrollbar-width: none;
+    padding: 4px 6px 0;
+    gap: 2px;
   }
-  .word-ribbon-tabs-header::-webkit-scrollbar {
+  .word-ribbon .ribbon-tabs-header::-webkit-scrollbar {
     display: none;
   }
 
@@ -569,31 +576,61 @@
     white-space: nowrap;
   }
 
-  .word-ribbon-group-bar {
+  .word-ribbon .ribbon-toolbar-body {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
     scrollbar-width: none;
-    padding: 6px 8px;
+    padding: 4px 6px;
+    gap: 4px;
   }
-  .word-ribbon-group-bar::-webkit-scrollbar {
+  .word-ribbon .ribbon-toolbar-body::-webkit-scrollbar {
     display: none;
   }
 
-  .word-ribbon-group {
+  .toolbar-group,
+  .toolbar-section-group {
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
   }
 
-  .word-stats-bar {
+  .word-outline-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    z-index: 50;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .word-status-bar {
     font-size: 0.7rem;
     padding: 4px 8px;
     flex-wrap: wrap;
     gap: 6px;
+  }
+
+  .status-right {
+    display: none;
   }
 }
 
 @media (max-width: 480px) {
   .word-paper-page {
     padding: 12px 8px !important;
+  }
+
+  .page-header-input,
+  .page-footer-input {
+    font-size: 0.72rem;
+  }
+
+  .word-editable-content {
+    font-size: 10pt;
+    line-height: 1.5;
+    min-height: 500px;
   }
 }

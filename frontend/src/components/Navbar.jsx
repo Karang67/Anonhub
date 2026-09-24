@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { Menu, X, ChevronDown, MessageSquare, FolderKanban, FileText, Code2, Monitor, Video, Info, HelpCircle, Home, Book, Palette, Sliders, Globe } from 'lucide-react';
+import { Menu, X, ChevronDown, MessageSquare, FolderKanban, FileText, Code2, Monitor, Video, Info, HelpCircle, Home, Book, Palette, Globe } from 'lucide-react';
 import PWAInstallPrompt from './PWAInstallPrompt';
 import OmniRoomSearchModal from './OmniRoomSearchModal';
 import { useFeatureAccess } from '../context/FeatureAccessContext';
@@ -49,7 +49,6 @@ const NAV_ITEMS = [
       { label: 'About',            to: '/about',          icon: <Info size={14} />,        desc: 'About Trinetra' },
       { label: 'Help',             to: '/help',           icon: <HelpCircle size={14} />,  desc: 'FAQ & documentation' },
       { label: 'Guide',            to: '/guide',          icon: <Book size={14} />,         desc: 'Complete user guide' },
-      { label: 'Feature Controls', to: '/admin/features', icon: <Sliders size={14} />,      desc: 'RBAC & feature dashboard', feature: 'admin.features' },
     ],
   },
 ];
@@ -213,7 +212,7 @@ export default function Navbar() {
         <div className="logo-container">
           <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 className="logo-text">Trinetra</h1>
-            <span className="logo-badge">Beta</span>
+            <span className="logo-badge">2.O</span>
           </Link>
         </div>
 

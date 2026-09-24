@@ -492,16 +492,29 @@ html[data-theme="dark"] .footer {
   }
 }
 
-/* Override header-height on very small screens to match shrunken navbar */
-@media (max-width: 400px) {
+/* Override header-height on responsive breakpoints to accurately match navbar */
+@media (max-width: 860px) {
   :root {
-    --header-height: 56px;
+    --header-height: 52px;
   }
 }
 
-/* Global overflow safety net */
+@media (max-width: 480px) {
+  :root {
+    --header-height: 48px;
+  }
+}
+
+/* Global overflow and mobile viewport safety */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-text-size-adjust: 100%;
+}
+
 #root {
   overflow-x: hidden;
   width: 100%;
   max-width: 100vw;
-}
+  min-height: 100dvh;
+}

@@ -1,4 +1,12 @@
-/* Minimal Help page styles for the feedback section */
+/* Help page styles */
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
 .page-container h3 {
   font-size: 1.1rem;
   margin: 0;
@@ -7,3 +15,15 @@
 .page-container p {
   font-size: 0.95rem;
 }
+
+@media (max-width: 480px) {
+  .help-header {
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .help-header svg {
+    width: 26px;
+    height: 26px;
+  }
+}
+

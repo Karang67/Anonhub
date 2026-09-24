@@ -123,7 +123,11 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 100vw;
+  overflow-x: hidden;
   background: var(--background-color, #0f172a);
   color: var(--text-color, #f8fafc);
   transition: all 0.3s ease;
@@ -1685,4 +1689,261 @@ html[data-theme="dark"] .office-chat-window {
 
 .share-copy-btn:hover {
   filter: brightness(1.15);
+}
+
+/* =============================================================================
+   Mobile & Responsive Adaptations (Tablet & Phone)
+   ============================================================================= */
+
+@media (max-width: 768px) {
+  /* Landing Gateway View */
+  .office-landing-container {
+    min-height: calc(100dvh - var(--header-height, 52px));
+    padding: 16px 12px;
+  }
+
+  .office-landing-card {
+    padding: 24px 18px;
+    border-radius: 14px;
+    max-width: 100%;
+  }
+
+  .office-landing-header h2 {
+    font-size: 1.45rem;
+  }
+
+  /* Workspace Header Bar */
+  .office-header-bar {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .office-header-title {
+    gap: 8px;
+    max-width: 60%;
+    min-width: 0;
+  }
+
+  .office-header-title h2 {
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+
+  .office-user-badge {
+    display: none;
+  }
+
+  .office-header-actions {
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .office-header-actions .btn-text {
+    display: none;
+  }
+
+  .office-users-roster {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  .office-share-btn,
+  .office-exit-btn {
+    padding: 6px 8px;
+    min-width: 32px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+  }
+
+  /* Workspace Tabs Bar */
+  .office-tabs-bar {
+    padding: 4px 8px 0;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .office-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .office-tabs-group {
+    gap: 2px;
+    flex-wrap: nowrap;
+  }
+
+  .office-tab-btn {
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    gap: 4px;
+  }
+
+  .compact-room-brand {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Smart Notes Workspace */
+  .smart-notes-workspace {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .notes-sidebar {
+    height: auto;
+    max-height: 190px;
+    flex-shrink: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  }
+
+  .notes-sidebar-header {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .add-note-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+
+  .notes-list {
+    max-height: 110px;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+
+  .note-list-item {
+    padding: 8px 10px;
+  }
+
+  .notes-editor-split {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 420px;
+  }
+
+  .notes-editor-half {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    min-height: 200px;
+    flex: 1;
+  }
+
+  .note-raw-textarea {
+    padding: 12px;
+    font-size: 0.85rem;
+    min-height: 160px;
+  }
+
+  .notes-preview-half {
+    min-height: 200px;
+    flex: 1;
+  }
+
+  .note-rendered-content {
+    padding: 12px;
+  }
+
+  /* Kanban Board Workspace */
+  .kanban-pane {
+    padding: 12px 8px;
+    overflow-x: hidden;
+  }
+
+  .kanban-workspace {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 12px;
+    height: 100%;
+    align-items: stretch;
+    padding-bottom: 12px;
+    scrollbar-width: thin;
+  }
+
+  .kanban-column {
+    width: 82vw;
+    min-width: 260px;
+    max-width: 320px;
+    flex-shrink: 0;
+    scroll-snap-align: center;
+    height: 100%;
+  }
+
+  .kanban-col-body {
+    padding: 10px;
+    gap: 8px;
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+  }
+
+  .kanban-card {
+    padding: 10px 12px;
+  }
+
+  /* Modals */
+  .share-modal,
+  .task-form-modal {
+    width: calc(100vw - 24px);
+    max-width: 100%;
+    padding: 18px 14px;
+    box-sizing: border-box;
+  }
+
+  .share-modal-url-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .share-copy-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .office-header-bar {
+    padding: 6px 8px;
+  }
+
+  .office-header-title h2 {
+    font-size: 0.88rem;
+    max-width: 120px;
+  }
+
+  .office-users-roster {
+    padding: 3px 6px;
+    font-size: 0.68rem;
+  }
+
+  .office-tab-btn {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+
+  .kanban-column {
+    width: 86vw;
+    min-width: 250px;
+  }
 }

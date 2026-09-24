@@ -1000,7 +1000,7 @@
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
     scrollbar-width: none;
-    padding: 6px 8px;
+    padding: 4px 6px;
   }
   .ribbon-groups-bar::-webkit-scrollbar {
     display: none;
@@ -1016,7 +1016,7 @@
   }
 
   .name-box-input {
-    width: 46px;
+    width: 44px;
     font-size: 0.75rem;
   }
 
@@ -1030,5 +1030,34 @@
 
   .spreadsheet-grid-viewport {
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 480px) {
+  .selection-summary-bar {
+    display: none;
+  }
+
+  .ribbon-save-status span {
+    display: none;
+  }
+
+  .spreadsheet-formula-bar {
+    padding: 3px 4px;
+  }
+
+  .formula-fx-icon {
+    font-size: 0.72rem;
+  }
+
+  .name-box-input {
+    width: 36px;
+    font-size: 0.72rem;
+    padding: 2px 4px;
+  }
+
+  .sheet-tab-item {
+    padding: 3px 6px;
+    font-size: 0.72rem;
   }
 }

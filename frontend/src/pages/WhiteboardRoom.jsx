@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Palette, Users, Share2, Copy, Check, Plus, Download, 
-  Trash2, Sparkles, HelpCircle, ArrowLeft, ExternalLink, QrCode, X, Pencil, ArrowRightLeft, LogOut
+  Trash2, Sparkles, HelpCircle, ArrowLeft, ExternalLink, QrCode, X, Pencil, ArrowRightLeft, LogOut, Grid
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { initSocket, getCookie, setCookie } from '../services/socket';
@@ -245,7 +245,7 @@ export default function WhiteboardRoom() {
         {/* Right: Actions */}
         <div className="wb-header-right">
           <button 
-            className="wb-action-btn"
+            className="wb-action-btn wb-btn-switch"
             onClick={handleSwitchRoom}
             title="Open or join a different Room ID"
           >
@@ -253,16 +253,17 @@ export default function WhiteboardRoom() {
             <span className="wb-btn-label">Switch Room</span>
           </button>
           <button 
-            className="wb-action-btn"
+            className="wb-action-btn wb-btn-grid"
             onClick={handleToggleGrid}
             title={isGridMode ? 'Hide Grid' : 'Show Grid Dots'}
           >
-            <span style={{ fontSize: '0.8rem' }}>{isGridMode ? '◻️ Grid On' : '◻️ Grid Off'}</span>
+            <Grid size={13} />
+            <span className="wb-btn-label">{isGridMode ? 'Grid On' : 'Grid Off'}</span>
           </button>
 
           {isFeatureVisible('whiteboard.export') && (
             <button 
-              className="wb-action-btn"
+              className="wb-action-btn wb-btn-export"
               onClick={handleExportJson}
               title="Download Canvas as JSON Snapshot"
             >
@@ -285,7 +286,7 @@ export default function WhiteboardRoom() {
             title="Share Whiteboard Room URL"
           >
             {copied ? <Check size={14} /> : <Share2 size={14} />}
-            <span>{copied ? 'Link Copied!' : 'Share'}</span>
+            <span className="wb-btn-label">{copied ? 'Link Copied!' : 'Share'}</span>
           </button>
 
           <button 

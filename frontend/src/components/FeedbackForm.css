@@ -76,3 +76,21 @@
   color: #b91c1c;
   font-weight: 600;
 }
+
+@media (max-width: 520px) {
+  .feedback-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .feedback-form {
+    padding: 12px 10px;
+  }
+
+  .feedback-input,
+  .feedback-textarea,
+  .feedback-select {
+    font-size: 0.9rem;
+  }
+}
+

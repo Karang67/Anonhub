@@ -347,8 +347,12 @@ html[data-theme="dark"] .hero-status-pill {
 .node-sketch { top: 40px;  right: 30px; }
 .node-doc    { bottom: 50px; left: 20px; }
 .node-chat   { bottom: 50px; right: 20px; }
-.node-office { top: 12px;  left: 200px; }
-.node-video  { bottom: 12px; left: 195px; }
+.node-office { top: 12px;  left: 50%; transform: translateX(-50%); }
+.node-video  { bottom: 12px; left: 50%; transform: translateX(-50%); }
+
+.node-office:hover { transform: translateX(-50%) scale(1.06); }
+.node-video:hover  { transform: translateX(-50%) scale(1.06); }
+
 
 .node-user-tag {
   font-size: 0.65rem;
@@ -1647,21 +1651,30 @@ html[data-theme="dark"] .hero-status-pill {
     display: flex;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
     flex-wrap: nowrap;
     gap: 6px;
-    padding-bottom: 2px;
+    padding-bottom: 6px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
   }
 
   .simulator-tabs-switcher::-webkit-scrollbar {
-    display: none;
+    display: block;
+    height: 4px;
+  }
+
+  .simulator-tabs-switcher::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
   }
 
   .sim-tab-btn {
     flex-shrink: 0;
     white-space: nowrap;
     font-size: 0.76rem;
-    padding: 6px 10px;
+    padding: 6px 12px;
+    scroll-snap-align: start;
   }
 
   .sim-view {
@@ -1722,6 +1735,23 @@ html[data-theme="dark"] .hero-status-pill {
   .network-visual-card {
     height: 320px;
   }
+
+  .network-satellite-node {
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    gap: 4px;
+  }
+
+  .node-user-tag {
+    display: none !important;
+  }
+
+  .node-code   { top: 22px;  left: 12px; }
+  .node-sketch { top: 22px;  right: 12px; }
+  .node-doc    { bottom: 26px; left: 12px; }
+  .node-chat   { bottom: 26px; right: 12px; }
+  .node-office { top: 12px;  left: 50%; transform: translateX(-50%); }
+  .node-video  { bottom: 12px; left: 50%; transform: translateX(-50%); }
 }
 
 @media (max-width: 480px) {
@@ -1735,6 +1765,62 @@ html[data-theme="dark"] .hero-status-pill {
     justify-content: center;
   }
 
+  .network-visual-card {
+    height: 290px;
+  }
+
+  .network-center-hub .hub-core-badge {
+    width: 76px;
+    height: 76px;
+    font-size: 0.76rem;
+  }
+
+  .network-satellite-node {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+
+  .node-code   { top: 16px; left: 8px; }
+  .node-sketch { top: 16px; right: 8px; }
+  .node-doc    { bottom: 18px; left: 8px; }
+  .node-chat   { bottom: 18px; right: 8px; }
+
+  .hero-features-strip {
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .strip-dot {
+    display: none;
+  }
+
+  .ai-prompt-btn {
+    width: 100%;
+    text-align: left;
+    font-size: 0.82rem;
+    padding: 8px 12px;
+  }
+
+  .tech-badges-wrap {
+    gap: 8px;
+  }
+
+  .tech-badge {
+    padding: 6px 12px;
+    font-size: 0.78rem;
+  }
+
+  .gateway-action-card {
+    padding: 18px 14px;
+  }
+
+  .gateway-sub-links {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
   .sim-view {
     padding: 10px;
   }
@@ -1743,6 +1829,7 @@ html[data-theme="dark"] .hero-status-pill {
     font-size: 0.72rem;
   }
 }
+
 
 @media (prefers-reduced-motion: reduce) {
   .ambient-orb {

@@ -879,3 +879,135 @@ input:checked + .fm-slider:before {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* =========================================================
+   RESPONSIVE (TABLET & MOBILE)
+   ========================================================= */
+@media (max-width: 1024px) {
+  .admin-fm-page {
+    padding: 16px 20px 60px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-fm-page {
+    padding: 12px 10px 60px;
+  }
+
+  .fm-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .fm-header-left {
+    gap: 10px;
+  }
+
+  .fm-title {
+    font-size: 1.25rem;
+  }
+
+  .fm-header-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .fm-role-selector-wrap {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .fm-btn-primary, .fm-btn-secondary {
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+
+  .fm-search-strip {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .fm-search-input-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .fm-module-filter-wrap {
+    width: 100%;
+    padding: 8px 12px;
+  }
+
+  .fm-module-select {
+    width: 100%;
+  }
+
+  .fm-module-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .fm-module-header-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .fm-table-wrap {
+    border-radius: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fm-table {
+    min-width: 600px;
+  }
+
+  .fm-table th, .fm-table td {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .fm-modal-card {
+    width: 95vw !important;
+    max-width: 480px !important;
+    margin: 10px;
+  }
+
+  .fm-modal-body {
+    padding: 14px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .fm-toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(75px + env(safe-area-inset-bottom, 0px));
+    font-size: 0.82rem;
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fm-title {
+    font-size: 1.1rem;
+  }
+
+  .fm-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .fm-tab-btn {
+    padding: 8px 10px;
+    font-size: 0.78rem;
+  }
+
+  .fm-btn-primary, .fm-btn-secondary {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
