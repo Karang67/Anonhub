@@ -399,11 +399,35 @@ html[data-theme="dark"] .ai-message-row.ai .ai-message-bubble {
 }
 
 /* ── Mobile constraints ───────────────────────────────────── */
+@media (max-width: 768px) {
+  .ai-chatbot-bubble-wrapper {
+    position: fixed !important;
+    top: auto !important;
+    left: auto !important;
+    right: 16px !important;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+    z-index: 9999 !important;
+  }
+
+  .ai-chatbot-window {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    height: min(480px, 72vh) !important;
+    transform: none !important;
+  }
+}
+
 @media (max-width: 500px) {
   .ai-chatbot-window {
     width: calc(100vw - 24px) !important;
     height: min(460px, 70vh) !important;
     left: 12px !important;
-    right: auto !important;
+    right: 12px !important;
   }
 }

@@ -42,8 +42,8 @@ export default function FeedbackForm({ onSuccess }) {
     let web3Sent = false;
     let dbSent = false;
 
-    // 1. Send via Web3Forms (recommended FormData format for free client API)
-    const WEB3FORMS_KEY = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '42667a44-9862-4b87-a1be-7f2f261d70ee';
+    // 1. Send via Web3Forms (if configured in environment)
+    const WEB3FORMS_KEY = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY || '';
     let web3ErrorMsg = '';
 
     if (WEB3FORMS_KEY) {
@@ -51,7 +51,7 @@ export default function FeedbackForm({ onSuccess }) {
         const formData = new FormData();
         formData.append('access_key', WEB3FORMS_KEY);
         formData.append('name', cleanName || 'Anonymous User');
-        formData.append('email', cleanEmail || 'loveinsights880@gmail.com');
+        formData.append('email', cleanEmail || 'no-reply@anonhub.app');
         formData.append('subject', `New AnonHub Feedback (${rating} Stars)`);
         formData.append('rating', `${rating} / 5`);
         formData.append('message', cleanMessage);

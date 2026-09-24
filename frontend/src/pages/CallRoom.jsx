@@ -39,7 +39,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff,
-  Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw, Info
+  Users, MessageSquare, X, Send, ChevronRight, Home, RefreshCw, Info, HelpCircle
 } from 'lucide-react';
 import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie } from '../services/socket';
@@ -715,6 +715,60 @@ export default function CallRoom() {
   const localStreamRef = useRef(globalCallSession.localStream);
   const localVideoRef = useRef(null);
   const screenStreamRef = useRef(globalCallSession.screenStream);
+  const [tourStep, setTourStep] = useState(-1);
+
+  const steps = [
+    {
+      title: 'Video Call Room Overview',
+      body: 'Welcome to the <strong>Video Call Room</strong>! Connect in real time using ultra-low latency Media over QUIC (MoQ) and WebTransport streams with instant Socket.IO fallback.',
+      class: 'call-step-0'
+    },
+    {
+      title: 'Pre-Join Mic & Camera Setup',
+      body: 'Before joining, toggle your <strong>Microphone</strong> and <strong>Camera</strong> preferences, then click <strong>Join Video Call</strong>.',
+      class: 'call-step-1'
+    },
+    {
+      title: 'Screen Sharing',
+      body: 'Click <strong>Screen Share</strong> to broadcast slides, documents, or apps directly to all call participants with zero latency.',
+      class: 'call-step-2'
+    },
+    {
+      title: 'Adaptive Video Grid',
+      body: 'The <strong>Video Grid</strong> dynamically adjusts video tiles as participants join, providing high-fps canvas video playback and active mic indicators.',
+      class: 'call-step-3'
+    },
+    {
+      title: 'In-Call Chat & Participant Roster',
+      body: 'Open the right sidebar to exchange text messages, links, and view all active participants in the call session.',
+      class: 'call-step-4'
+    }
+  ];
+
+  // Onboarding walkthrough tour logic
+  useEffect(() => {
+    const handleStartTour = () => setTourStep(0);
+    window.addEventListener('start-trinetra-tour', handleStartTour);
+    window.addEventListener('start-anonhub-tour', handleStartTour);
+
+    if (roomName) {
+      const hasSeenTour = localStorage.getItem('trinetra_call_tour_seen') || localStorage.getItem('anonhub_call_tour_seen');
+      if (!hasSeenTour) {
+        const t = setTimeout(() => setTourStep(0), 1500);
+        return () => {
+          clearTimeout(t);
+          window.removeEventListener('start-trinetra-tour', handleStartTour);
+          window.removeEventListener('start-anonhub-tour', handleStartTour);
+        };
+      }
+    }
+
+    return () => {
+      window.removeEventListener('start-trinetra-tour', handleStartTour);
+      window.removeEventListener('start-anonhub-tour', handleStartTour);
+    };
+  }, [roomName]);
+
   const moqClientRef = useRef(globalCallSession.moqSession);
   const peerCanvasRefs = useRef({});
 
@@ -772,7 +826,7 @@ export default function CallRoom() {
         });
         if (res.ok) {
           const data = await res.json();
-          const uname = sessionStorage.getItem('anonhub-username') || getCookie('anonhub-username') || 'Anonymous';
+          const uname = sessionStorage.getItem('trinetra-username') || sessionStorage.getItem('anonhub-username') || getCookie('trinetra-username') || getCookie('anonhub-username') || 'Anonymous';
           setUsername(uname);
           if (data.ownerToken) localStorage.setItem(`owner_token_${roomName}`, data.ownerToken);
           setIsAuthed(true);
@@ -797,9 +851,9 @@ export default function CallRoom() {
       if (res.ok) {
         sessionStorage.setItem(`accesskey_project_${rName}`, accessKey);
         setCookie(`accesskey_project_${rName}`, accessKey);
-        setCookie(`anonhub-active-call-room`, rName);
+        setCookie(`trinetra-active-call-room`, rName);
         if (data.ownerToken) localStorage.setItem(`owner_token_${rName}`, data.ownerToken);
-        const uname = sessionStorage.getItem('anonhub-username') || getCookie('anonhub-username') || 'Anonymous';
+        const uname = sessionStorage.getItem('trinetra-username') || sessionStorage.getItem('anonhub-username') || getCookie('trinetra-username') || getCookie('anonhub-username') || 'Anonymous';
         setUsername(uname);
         setIsAuthed(true);
       } else {
@@ -1340,10 +1394,29 @@ export default function CallRoom() {
             <Home size={16} />
           </button>
           <div className="callroom-logo-dot" />
-          <span className="callroom-title">AnonHub Call ({transportMode})</span>
+          <span className="callroom-title">Trinetra Call ({transportMode})</span>
           <span className="callroom-room-name">#{roomName}</span>
         </div>
         <div className="callroom-header-right">
+          <button
+            onClick={() => setTourStep(0)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '5px 10px',
+              borderRadius: '6px',
+              background: 'rgba(124, 77, 255, 0.15)',
+              border: '1px solid rgba(124, 77, 255, 0.3)',
+              color: '#c5b3ff',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Start Call Room Tour"
+          >
+            <HelpCircle size={13} /> Quick Guide
+          </button>
           {inCall && (
             <div className="callroom-live-badge">
               <div className="callroom-live-dot" />
@@ -1661,6 +1734,44 @@ export default function CallRoom() {
             </button>
           </div>
         </aside>
+      )}
+
+      {/* Interactive Tour Tooltip Card */}
+      {tourStep >= 0 && steps[tourStep] && (
+        <div className={`tour-tooltip-card ${steps[tourStep].class}`}>
+          <div className="tour-tooltip-arrow" />
+          <div className="tour-tooltip-header">
+            <h4>{steps[tourStep].title}</h4>
+            <span className="tour-tooltip-badge">Step {tourStep + 1} of {steps.length}</span>
+          </div>
+          <div className="tour-tooltip-body">
+            <p dangerouslySetInnerHTML={{ __html: steps[tourStep].body }} />
+          </div>
+          <div className="tour-tooltip-footer">
+            <button
+              className="tour-skip-btn"
+              onClick={() => {
+                localStorage.setItem('trinetra_call_tour_seen', 'true');
+                setTourStep(-1);
+              }}
+            >
+              Skip
+            </button>
+            <button
+              className="tour-next-btn"
+              onClick={() => {
+                if (tourStep < steps.length - 1) {
+                  setTourStep(prev => prev + 1);
+                } else {
+                  localStorage.setItem('trinetra_call_tour_seen', 'true');
+                  setTourStep(-1);
+                }
+              }}
+            >
+              {tourStep === steps.length - 1 ? 'Finish' : 'Next'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

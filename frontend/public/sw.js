@@ -4,7 +4,7 @@
  * Enables offline access to the app shell and fast loads on mobile.
  */
 
-const CACHE_NAME = 'anonhub-v1';
+const CACHE_NAME = 'trinetra-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -103,13 +103,13 @@ self.addEventListener('fetch', (event) => {
 
 // Push notifications (Phase 4 hook)
 self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : { title: 'AnonHub', body: 'New activity!' };
+  const data = event.data ? event.data.json() : { title: 'Trinetra', body: 'New activity!' };
   event.waitUntil(
-    self.registration.showNotification(data.title || 'AnonHub', {
+    self.registration.showNotification(data.title || 'Trinetra', {
       body: data.body || 'You have a new message.',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: 'anonhub-notification',
+      tag: 'trinetra-notification',
       renotify: true
     })
   );

@@ -13,10 +13,14 @@ import {
   Table, FileText, CheckSquare, ListTodo, Plus, Trash2, 
   Download, ArrowLeftRight, Edit3, Send, Check, X, 
   Copy, Bold, Italic, Underline, AlignLeft, AlignCenter, 
-  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare, HelpCircle
+  AlignRight, Heading1, Heading2, List, ListOrdered, Sparkles, KeyRound, Eye, EyeOff, Link2, LogOut, MessageSquare, HelpCircle, AlertTriangle,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
+import { deleteRoom } from '../services/api';
+import SpreadsheetEditor from '../components/spreadsheet/SpreadsheetEditor';
+import WordEditor from '../components/word/WordEditor';
 import './OfficeBoard.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,45 +129,70 @@ export default function OfficeBoard() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [tourStep, setTourStep] = useState(-1);
 
+  // Room Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingRoom, setDeletingRoom] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   // Main navigation tab
   const [activeTab, setActiveTab] = useState('excel'); // 'excel' | 'word' | 'notes' | 'kanban'
 
   const steps = [
     {
-      title: 'Office Suite Guide',
-      body: 'Welcome to the <strong>Office Productivity Suite</strong>! Here you can collaboratively manage spreadsheets, rich word documents, smart markdown notes, and kanban boards.',
+      title: 'Office Suite Overview',
+      body: 'Welcome to the <strong>Office Productivity Suite</strong>! Here you can collaboratively manage spreadsheets, rich word documents, smart markdown notes, and kanban project boards.',
       class: 'office-step-0'
     },
     {
-      title: 'Spreadsheet Tab',
-      body: 'The <strong>Spreadsheet</strong> tab features an Excel-like reactive grid supporting formulas (e.g. <code>=A1+B1</code>, <code>=SUM(A1:A5)</code>) and CSV exporting.',
+      title: 'Spreadsheet Tab (Excel)',
+      body: 'The <strong>Spreadsheet</strong> tab features a real-time reactive grid supporting mathematical formulas (e.g. <code>=A1+B1</code>, <code>=SUM(A1:A5)</code>, <code>=AVERAGE(A1:A5)</code>) with CSV import and export.',
       class: 'office-step-1'
     },
     {
-      title: 'Document Tab',
-      body: 'In the <strong>Word</strong> tab, write rich text documents collaboratively with formatting tools (Bold, Alignments, Lists) and page export configurations.',
+      title: 'Document Tab (Word)',
+      body: 'In the <strong>Word</strong> tab, write formatted rich text documents collaboratively with font controls, lists, alignments, and export tools.',
       class: 'office-step-2'
     },
     {
-      title: 'Smart Notes Tab',
-      body: 'Use <strong>Smart Notes</strong> to capture raw text dumps and organize them into clear structures instantly using our <strong>AI Organize</strong> copilot tool.',
+      title: 'Smart Notes & AI Organize',
+      body: 'Use <strong>Smart Notes</strong> to capture meeting notes and ideas. Click <strong>AI Organize</strong> to automatically convert unstructured notes into organized summaries and action checklists.',
       class: 'office-step-3'
     },
     {
       title: 'Kanban Project Board',
-      body: 'Use the <strong>Kanban Board</strong> to track your team progress. Create, edit, and move cards across progress columns.',
+      body: 'Use the <strong>Kanban Board</strong> to track tasks across stages. Add, edit, and move cards across columns (To Do, In Progress, Review, Done) in real time.',
       class: 'office-step-4'
+    },
+    {
+      title: 'Share Board & Suite Controls',
+      body: 'Use the top actions bar to <strong>Share Board</strong> with collaborators (generates instant invite links and QR codes), collapse the header for more workspace room, or manage room lifecycle.',
+      class: 'office-step-5'
     }
   ];
 
   // Onboarding walkthrough tour logic
   useEffect(() => {
-    if (!roomName) return;
-    const hasSeenTour = localStorage.getItem('anonhub_office_tour_seen');
-    if (!hasSeenTour) {
-      const t = setTimeout(() => setTourStep(0), 1500);
-      return () => clearTimeout(t);
+    const handleStartTour = () => setTourStep(0);
+    window.addEventListener('start-trinetra-tour', handleStartTour);
+    window.addEventListener('start-anonhub-tour', handleStartTour);
+
+    if (roomName) {
+      const hasSeenTour = localStorage.getItem('trinetra_office_tour_seen') || localStorage.getItem('anonhub_office_tour_seen');
+      if (!hasSeenTour) {
+        const t = setTimeout(() => setTourStep(0), 1500);
+        return () => {
+          clearTimeout(t);
+          window.removeEventListener('start-trinetra-tour', handleStartTour);
+          window.removeEventListener('start-anonhub-tour', handleStartTour);
+        };
+      }
     }
+
+    return () => {
+      window.removeEventListener('start-trinetra-tour', handleStartTour);
+      window.removeEventListener('start-anonhub-tour', handleStartTour);
+    };
   }, [roomName]);
 
   // Synchronize navigation tabs when walking through tour steps
@@ -189,24 +218,9 @@ export default function OfficeBoard() {
   const [editingCell, setEditingCell] = useState(null);
 
   const [wordContent, setWordContent] = useState('');
-  const editorRef = useRef(null);
-  const wordTimeoutRef = useRef(null);
   const notesTimeoutRef = useRef(null);
-  const [wordCount, setWordCount] = useState(0);
 
-  // Sync Word editor DOM innerHTML with state on tab switch or remote update
-  useEffect(() => {
-    if (activeTab === 'word' && editorRef.current) {
-      if (editorRef.current.innerHTML !== wordContent) {
-        editorRef.current.innerHTML = wordContent;
-      }
-      const text = editorRef.current.innerText || '';
-      const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
-      setWordCount(words);
-    }
-  }, [activeTab, wordContent]);
-
-    // Notes state
+  // Notes state
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
   const [notesSearch, setNotesSearch] = useState('');
@@ -223,6 +237,7 @@ export default function OfficeBoard() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const chatMessagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -239,7 +254,11 @@ export default function OfficeBoard() {
     if (!roomName) return;
 
     // Retrieve cached token if it exists
-    const cachedToken = localStorage.getItem(`anonhub-office-token-${roomName}`) || localStorage.getItem(`anonhub-office-token-${roomName.toLowerCase()}`) || '';
+    const cachedToken = localStorage.getItem(`trinetra-office-token-${roomName}`)
+      || localStorage.getItem(`trinetra-office-token-${roomName.toLowerCase()}`)
+      || localStorage.getItem(`anonhub-office-token-${roomName}`)
+      || localStorage.getItem(`anonhub-office-token-${roomName.toLowerCase()}`)
+      || '';
 
     // Instantiating Socket Connection
     const socket = initSocket();
@@ -258,7 +277,9 @@ export default function OfficeBoard() {
 
     socket.on('set username', (name) => {
       setUsername(name);
+      document.cookie = `trinetra-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('trinetra-username', name);
       sessionStorage.setItem('anonhub-username', name);
       if (socketRef.current) {
         socketRef.current.auth = { ...socketRef.current.auth, username: name };
@@ -294,9 +315,6 @@ export default function OfficeBoard() {
       } catch(e) { setSheetData({}); }
       
       setWordContent(data.wordContent || '');
-      if (editorRef.current && editorRef.current.innerHTML !== data.wordContent) {
-        editorRef.current.innerHTML = data.wordContent || '';
-      }
 
       try {
         const loadedNotes = JSON.parse(data.notes || '[]');
@@ -318,9 +336,6 @@ export default function OfficeBoard() {
 
     socket.on('word content', (content) => {
       setWordContent(content);
-      if (editorRef.current && editorRef.current.innerHTML !== content) {
-        editorRef.current.innerHTML = content;
-      }
     });
 
     socket.on('office notes content', (data) => {
@@ -338,6 +353,11 @@ export default function OfficeBoard() {
     socket.on('access denied', ({ message }) => {
       setOverlayError(message || 'Incorrect access key.');
       navigate('/office');
+    });
+
+    socket.on('room deleted', ({ room, message }) => {
+      alert(message || 'This office room has been permanently deleted by the owner.');
+      navigate('/');
     });
 
     socket.on('chat message', (msg) => {
@@ -372,11 +392,17 @@ export default function OfficeBoard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: roomInput.trim(), accessKey: accessKeyInput.trim() })
       });
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { error: `Server error: received non-JSON response (${res.status})` };
+      }
       if (!res.ok) {
         setOverlayError(data.error || 'Access authorization failed.');
       } else {
         if (data.ownerToken) {
+          localStorage.setItem(`trinetra-office-token-${roomInput.trim()}`, data.ownerToken);
           localStorage.setItem(`anonhub-office-token-${roomInput.trim()}`, data.ownerToken);
         }
         sessionStorage.setItem(`accesskey_office_${roomInput.trim()}`, accessKeyInput.trim());
@@ -384,9 +410,39 @@ export default function OfficeBoard() {
         navigate(`/office/${encodeURIComponent(roomInput.trim())}`);
       }
     } catch (err) {
-      setOverlayError('Server connection lost.');
+      console.error(err);
+      setOverlayError(err.message || 'Could not connect to Office room.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteOfficeRoom = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) {
+      setDeleteError(`Please type "${roomName}" exactly to confirm.`);
+      return;
+    }
+    const ownerToken = localStorage.getItem(`trinetra-office-token-${roomName}`)
+      || localStorage.getItem(`anonhub-office-token-${roomName}`)
+      || localStorage.getItem(`owner_token_office_${roomName}`)
+      || localStorage.getItem(`owner_token_${roomName}`);
+    if (!ownerToken) {
+      setDeleteError('Owner token not found in this browser session.');
+      return;
+    }
+    setDeletingRoom(true);
+    setDeleteError('');
+    try {
+      await deleteRoom('office', roomName, ownerToken);
+      localStorage.removeItem(`trinetra-office-token-${roomName}`);
+      localStorage.removeItem(`anonhub-office-token-${roomName}`);
+      localStorage.removeItem(`owner_token_office_${roomName}`);
+      localStorage.removeItem(`owner_token_${roomName}`);
+      setShowDeleteModal(false);
+      navigate('/');
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete room.');
+      setDeletingRoom(false);
     }
   };
 
@@ -559,37 +615,6 @@ export default function OfficeBoard() {
         kanban: JSON.stringify(updated)
       });
     }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Action Handlers: Word Doc (Rich Editor)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  const handleWordInput = () => {
-    if (editorRef.current) {
-      const content = editorRef.current.innerHTML;
-      setWordContent(content);
-
-      // Simple word count
-      const text = editorRef.current.innerText || '';
-      const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
-      setWordCount(words);
-
-      if (socketRef.current) {
-        if (wordTimeoutRef.current) clearTimeout(wordTimeoutRef.current);
-        wordTimeoutRef.current = setTimeout(() => {
-          socketRef.current.emit('update word', {
-            officeName: roomName,
-            wordContent: content
-          });
-        }, 400);
-      }
-    }
-  };
-
-  const formatDoc = (cmd, value = null) => {
-    document.execCommand(cmd, false, value);
-    handleWordInput();
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -880,49 +905,93 @@ export default function OfficeBoard() {
   return (
     <div className="office-workspace-wrapper">
       
-      {/* Workspace top bar header */}
-      <div className="office-header-bar">
-        <div className="office-header-title">
-          <h2>🏢 Office: {roomName}</h2>
-          <span className="office-user-badge">Username: <strong>{username}</strong></span>
-        </div>
-
-        {/* Action controls */}
-        <div className="office-header-actions">
-          <div className="office-users-roster">
-            👥 {users.length} connected
+      {/* Workspace top bar header (Collapsible) */}
+      {!isHeaderCollapsed && (
+        <div className="office-header-bar">
+          <div className="office-header-title">
+            <h2>🏢 Office: {roomName}</h2>
+            <span className="office-user-badge">Username: <strong>{username}</strong></span>
           </div>
-          <button className="office-share-btn" onClick={() => setShowShareModal(true)}>
-            <Link2 size={14} /> <span className="btn-text">Share Board</span>
-          </button>
-          <button 
-            className="office-share-btn" 
-            onClick={() => setTourStep(0)} 
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--accent-glow)', color: 'var(--primary-color)' }}
-            title="Start Onboarding Tour"
-          >
-            <HelpCircle size={14} /> <span className="btn-text">Quick Guide</span>
-          </button>
-          <Link to="/" onClick={() => deleteCookie(`accesskey_office_${roomName}`)} className="office-exit-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <LogOut size={14} /> <span className="btn-text">Leave Suite</span>
-          </Link>
+
+          {/* Action controls */}
+          <div className="office-header-actions">
+            <div className="office-users-roster">
+              👥 {users.length} connected
+            </div>
+            <button className="office-share-btn" onClick={() => setShowShareModal(true)}>
+              <Link2 size={14} /> <span className="btn-text">Share Board</span>
+            </button>
+            <button 
+              className="office-share-btn" 
+              onClick={() => setTourStep(0)} 
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--accent-glow)', color: 'var(--primary-color)' }}
+              title="Start Onboarding Tour"
+            >
+              <HelpCircle size={14} /> <span className="btn-text">Quick Guide</span>
+            </button>
+            {isOwner && (
+              <button
+                className="office-exit-btn"
+                onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer' }}
+                title="Delete this room permanently"
+              >
+                <Trash2 size={14} /> <span className="btn-text">Delete Room</span>
+              </button>
+            )}
+            <Link to="/" onClick={() => deleteCookie(`accesskey_office_${roomName}`)} className="office-exit-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <LogOut size={14} /> <span className="btn-text">Leave Suite</span>
+            </Link>
+            <button
+              className="office-header-collapse-toggle"
+              onClick={() => setIsHeaderCollapsed(true)}
+              title="Collapse Header (Maximize Workspace)"
+              aria-label="Collapse Header"
+            >
+              <ChevronUp size={16} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tabs list Nav Bar */}
-      <div className="office-tabs-bar">
-        <button className={`office-tab-btn ${activeTab === 'excel' ? 'active' : ''}`} onClick={() => setActiveTab('excel')}>
-          <Table size={16} /> Spreadsheet (Excel)
-        </button>
-        <button className={`office-tab-btn ${activeTab === 'word' ? 'active' : ''}`} onClick={() => setActiveTab('word')}>
-          <FileText size={16} /> Document (Word)
-        </button>
-        <button className={`office-tab-btn ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
-          <CheckSquare size={16} /> Smart Notes
-        </button>
-        <button className={`office-tab-btn ${activeTab === 'kanban' ? 'active' : ''}`} onClick={() => setActiveTab('kanban')}>
-          <ListTodo size={16} /> Kanban Board
-        </button>
+      <div className={`office-tabs-bar ${isHeaderCollapsed ? 'collapsed-mode' : ''}`}>
+        {isHeaderCollapsed && (
+          <div className="compact-room-brand">
+            <span className="compact-room-name">🏢 {roomName}</span>
+          </div>
+        )}
+
+        <div className="office-tabs-group">
+          <button className={`office-tab-btn ${activeTab === 'excel' ? 'active' : ''}`} onClick={() => setActiveTab('excel')}>
+            <Table size={15} /> Spreadsheet (Excel)
+          </button>
+          <button className={`office-tab-btn ${activeTab === 'word' ? 'active' : ''}`} onClick={() => setActiveTab('word')}>
+            <FileText size={15} /> Document (Word)
+          </button>
+          <button className={`office-tab-btn ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
+            <CheckSquare size={15} /> Smart Notes
+          </button>
+          <button className={`office-tab-btn ${activeTab === 'kanban' ? 'active' : ''}`} onClick={() => setActiveTab('kanban')}>
+            <ListTodo size={15} /> Kanban Board
+          </button>
+        </div>
+
+        {isHeaderCollapsed && (
+          <div className="compact-header-actions">
+            <button className="compact-action-btn" onClick={() => setShowShareModal(true)} title="Share Room Link">
+              <Link2 size={14} />
+            </button>
+            <button
+              className="office-header-collapse-toggle"
+              onClick={() => setIsHeaderCollapsed(false)}
+              title="Expand Full Header"
+              aria-label="Expand Full Header"
+            >
+              <ChevronDown size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main interactive window viewport */}
@@ -930,150 +999,29 @@ export default function OfficeBoard() {
 
         {/* TABS CONTAINER 1: EXCEL SPREADSHEET */}
         {activeTab === 'excel' && (
-          <div className="office-pane excel-pane">
-            <div className="excel-toolbar" style={{ flexWrap: 'wrap', gap: '8px' }}>
-              <button onClick={handleAddRow} className="excel-tool-btn" title="Add 5 rows to the spreadsheet">➕ Add Rows</button>
-              <button onClick={handleRemoveRow} className="excel-tool-btn" title="Remove 5 rows from the spreadsheet">➖ Remove Rows</button>
-              <button onClick={handleAddCol} className="excel-tool-btn" title="Add 2 columns to the spreadsheet">➕ Add Columns</button>
-              <button onClick={handleRemoveCol} className="excel-tool-btn" title="Remove 2 columns from the spreadsheet">➖ Remove Columns</button>
-              <button onClick={handleClearSheet} className="excel-tool-btn" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }} title="Clear all cell values and formulas">🧹 Clear Sheet</button>
-              <button onClick={exportToCSV} className="excel-tool-btn csv-btn"><Download size={14} /> Export CSV</button>
-              <div className="excel-formula-bar">
-                <span className="formula-label">fx</span>
-                <input
-                  type="text"
-                  className="formula-input-field"
-                  placeholder="Select a cell to enter value or formula (e.g. =A1+B1 or =SUM(A1:A5))"
-                  value={cellFormulaInput}
-                  onChange={handleFormulaBarChange}
-                  onBlur={() => {
-                    if (selectedCell) {
-                      handleCellChange(selectedCell, cellFormulaInput);
-                    }
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.target.blur();
-                    }
-                  }}
-                  disabled={!selectedCell}
-                />
-              </div>
-            </div>
-
-            <div className="excel-grid-container">
-              <table className="excel-table">
-                <thead>
-                  <tr>
-                    <th className="excel-header-corner"></th>
-                    {Array.from({ length: sheetCols }).map((_, cIdx) => (
-                      <th key={cIdx} className="excel-col-header">
-                        {String.fromCharCode(65 + cIdx)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: sheetRows }).map((_, rIdx) => {
-                    const rowNum = rIdx + 1;
-                    return (
-                      <tr key={rIdx}>
-                        <td className="excel-row-header">{rowNum}</td>
-                        {Array.from({ length: sheetCols }).map((_, cIdx) => {
-                          const colLetter = String.fromCharCode(65 + cIdx);
-                          const cellId = colLetter + rowNum;
-                          const rawVal = sheetData[cellId] || '';
-                          const evaluatedVal = evaluateCell(cellId, sheetData);
-                          const isSelected = selectedCell === cellId;
-                          const isEditing = editingCell === cellId;
-
-                          return (
-                            <td 
-                              key={cIdx} 
-                              className={`excel-cell ${isSelected ? 'selected' : ''}`}
-                              onClick={() => {
-                                if (isSelected) {
-                                  setEditingCell(cellId);
-                                  setTempCellInput(sheetData[cellId] || '');
-                                } else {
-                                  handleCellSelect(colLetter, rowNum);
-                                }
-                              }}
-                              onDoubleClick={() => {
-                                setEditingCell(cellId);
-                                setTempCellInput(sheetData[cellId] || '');
-                              }}
-                            >
-                              {isEditing ? (
-                                <input
-                                  type="text"
-                                  className="excel-cell-editor"
-                                  value={tempCellInput}
-                                  onChange={e => {
-                                    setTempCellInput(e.target.value);
-                                    setCellFormulaInput(e.target.value);
-                                  }}
-                                  onBlur={() => {
-                                    handleCellChange(cellId, tempCellInput);
-                                    setEditingCell(null);
-                                  }}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      handleCellChange(cellId, tempCellInput);
-                                      setEditingCell(null);
-                                    }
-                                  }}
-                                  autoFocus
-                                />
-                              ) : (
-                                <span className="excel-cell-text">{evaluatedVal}</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <div className="office-pane excel-pane" style={{ padding: 0, overflow: 'hidden', height: '100%' }}>
+            <SpreadsheetEditor
+              roomName={roomName}
+              username={username}
+              isOwner={isOwner}
+              initialData={sheetData}
+              socketRef={socketRef}
+              onWorkbookChange={(newWb) => setSheetData(newWb)}
+            />
           </div>
         )}
 
         {/* TABS CONTAINER 2: WORD DOCUMENT */}
         {activeTab === 'word' && (
-          <div className="office-pane word-pane">
-            <div className="word-toolbar">
-              <button onClick={() => formatDoc('bold')} className="word-tool-btn" title="Bold"><Bold size={16} /></button>
-              <button onClick={() => formatDoc('italic')} className="word-tool-btn" title="Italic"><Italic size={16} /></button>
-              <button onClick={() => formatDoc('underline')} className="word-tool-btn" title="Underline"><Underline size={16} /></button>
-              <span className="toolbar-separator" />
-              <button onClick={() => formatDoc('formatBlock', 'H1')} className="word-tool-btn" title="Heading 1"><Heading1 size={16} /></button>
-              <button onClick={() => formatDoc('formatBlock', 'H2')} className="word-tool-btn" title="Heading 2"><Heading2 size={16} /></button>
-              <button onClick={() => formatDoc('formatBlock', 'P')} className="word-tool-btn" title="Paragraph">P</button>
-              <span className="toolbar-separator" />
-              <button onClick={() => formatDoc('justifyLeft')} className="word-tool-btn" title="Align Left"><AlignLeft size={16} /></button>
-              <button onClick={() => formatDoc('justifyCenter')} className="word-tool-btn" title="Align Center"><AlignCenter size={16} /></button>
-              <button onClick={() => formatDoc('justifyRight')} className="word-tool-btn" title="Align Right"><AlignRight size={16} /></button>
-              <span className="toolbar-separator" />
-              <button onClick={() => formatDoc('insertUnorderedList')} className="word-tool-btn" title="Bullet List"><List size={16} /></button>
-              <button onClick={() => formatDoc('insertOrderedList')} className="word-tool-btn" title="Numbered List"><ListOrdered size={16} /></button>
-            </div>
-
-            <div className="word-page-container">
-              <div 
-                ref={editorRef}
-                className="word-document-page"
-                contentEditable
-                onInput={handleWordInput}
-                suppressContentEditableWarning
-              />
-            </div>
-            
-            <div className="word-status-bar">
-              <span>Words: {wordCount}</span>
-              <span>Collaborative Sync Active</span>
-            </div>
+          <div className="office-pane word-pane" style={{ padding: 0, overflow: 'hidden', height: '100%' }}>
+            <WordEditor
+              roomName={roomName}
+              username={username}
+              isOwner={isOwner}
+              initialContent={wordContent}
+              socketRef={socketRef}
+              onContentChange={(newHtml) => setWordContent(newHtml)}
+            />
           </div>
         )}
 
@@ -1345,16 +1293,66 @@ export default function OfficeBoard() {
         </div>
       )}
 
-      {/* Floating Group Chat Widget */}
-      <div className="office-chat-bubble-wrapper">
-        <button
-          className={`office-chat-bubble ${isChatOpen ? 'active' : ''}`}
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          title="Office Group Chat"
-        >
-          <MessageSquare size={22} />
-        </button>
-      </div>
+      {/* Group Chat Drawer Floating Button */}
+      <button 
+        className={`floating-office-chat-toggle ${isChatOpen ? 'open' : ''}`}
+        onClick={() => setIsChatOpen(prev => !prev)}
+        title="Open Room Group Chat"
+      >
+        <MessageSquare size={20} />
+      </button>
+
+      {/* ── Room Deletion Confirmation Modal (Owner) ────────────────────── */}
+      {showDeleteModal && (
+        <div className="chat-lightbox" onClick={() => !deletingRoom && setShowDeleteModal(false)}>
+          <div className="share-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', border: '1.5px solid #ef4444' }}>
+            <div className="share-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                <AlertTriangle size={18} /> Delete Office Room Permanently?
+              </h3>
+              <button onClick={() => !deletingRoom && setShowDeleteModal(false)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <p className="share-modal-subtitle" style={{ color: 'var(--text-color)', lineHeight: 1.6 }}>
+              All spreadsheets, documents, notes, and kanban boards associated with <strong>{roomName}</strong> will be permanently removed. This action <strong>cannot be undone</strong>.
+            </p>
+            <div style={{ margin: '14px 0' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                Please type <strong>{roomName}</strong> to confirm:
+              </label>
+              <input
+                type="text"
+                className="owner-key-input"
+                placeholder={roomName}
+                value={deleteConfirmText}
+                onChange={e => { setDeleteConfirmText(e.target.value); setDeleteError(''); }}
+                disabled={deletingRoom}
+                autoFocus
+                style={{ width: '100%', borderColor: '#ef4444' }}
+              />
+              {deleteError && <p className="owner-key-msg error" style={{ marginTop: '6px' }}>{deleteError}</p>}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                type="button"
+                className="tab-btn"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletingRoom}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteOfficeRoom}
+                disabled={deletingRoom || deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()}
+                style={{ padding: '8px 18px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: (deletingRoom || deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) ? 'not-allowed' : 'pointer', opacity: (deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) ? 0.6 : 1 }}
+              >
+                {deletingRoom ? 'Deleting...' : 'Permanently Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={`office-chat-window ${isChatOpen ? 'open' : ''}`}>
         <div className="office-chat-header">
@@ -1415,7 +1413,7 @@ export default function OfficeBoard() {
             <button
               className="tour-skip-btn"
               onClick={() => {
-                localStorage.setItem('anonhub_office_tour_seen', 'true');
+                localStorage.setItem('trinetra_office_tour_seen', 'true');
                 setTourStep(-1);
               }}
             >
@@ -1427,7 +1425,7 @@ export default function OfficeBoard() {
                 if (tourStep < steps.length - 1) {
                   setTourStep(prev => prev + 1);
                 } else {
-                  localStorage.setItem('anonhub_office_tour_seen', 'true');
+                  localStorage.setItem('trinetra_office_tour_seen', 'true');
                   setTourStep(-1);
                 }
               }}

@@ -10,7 +10,7 @@ import { SOCKET_URL } from '../config';
 
 /**
  * Parses and retrieves client cookies matching a specific key name.
- * @param {string} name - Target cookie parameter key E.g. 'anonhub-username'
+ * @param {string} name - Target cookie parameter key E.g. 'trinetra-username'
  * @returns {string|null} Decoded cookie value payload if found, otherwise null
  */
 export function getCookie(name) {
@@ -25,23 +25,31 @@ export function getCookie(name) {
   return null;
 }
 
+// Global shared socket instance to prevent duplicate connections and handshakes
+let globalSocket = null;
+
 /**
- * Initializes and returns a new Socket.IO client instance.
- * Binds saved anonymous pseudonyms inside the connection authentication parameters
- * to let the backend reuse existing user descriptors.
- * Connects to configured SOCKET_URL (or host origin when fallback).
- * Note: Configured with `autoConnect: false` to allow callers to control the connection lifespan.
+ * Initializes and returns the shared Socket.IO client singleton instance.
+ * Reuses existing connection across components and pages to eliminate
+ * redundant handshakes, timers, and TCP connection overhead.
  *
  * Priority: sessionStorage (current browser session) > cookie (set on page load).
- * This ensures that navigating between pages within the same browser session always
- * uses the same username, and a new name is only assigned when the browser is reopened.
- * @returns {Socket} Configured Socket.IO Client instance
+ * @returns {Socket} Shared configured Socket.IO Client instance
  */
 export function initSocket() {
-  // Prefer sessionStorage (scoped to current browser session) over cookie
-  const savedUsername = sessionStorage.getItem('anonhub-username') || getCookie('anonhub-username') || '';
-  const sessionId = getCookie('anonhub-session-id') || '';
-  return io(SOCKET_URL || undefined, {
+  const savedUsername = sessionStorage.getItem('trinetra-username') || sessionStorage.getItem('anonhub-username') || getCookie('trinetra-username') || getCookie('anonhub-username') || '';
+  const sessionId = getCookie('trinetra-session-id') || getCookie('anonhub-session-id') || '';
+
+  if (globalSocket) {
+    // Update auth credentials if username was updated
+    if (globalSocket.auth) {
+      globalSocket.auth.username = savedUsername;
+      globalSocket.auth.sessionId = sessionId;
+    }
+    return globalSocket;
+  }
+
+  globalSocket = io(SOCKET_URL || undefined, {
     auth: {
       username: savedUsername,
       sessionId: sessionId
@@ -57,6 +65,12 @@ export function initSocket() {
     timeout: 20000,
     autoConnect: false
   });
+
+  return globalSocket;
+}
+
+export function getSharedSocket() {
+  return globalSocket || initSocket();
 }
 
 /**

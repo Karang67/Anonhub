@@ -152,7 +152,7 @@ html[data-theme="dark"] .tour-tooltip-card {
   right: 24px;
 }
 
-/* Project Room steps */
+/* Project Room steps (0 to 9) */
 .tour-tooltip-card.proj-step-0 {
   top: 120px;
   left: 50%;
@@ -160,8 +160,8 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 .tour-tooltip-card.proj-step-1 {
-  top: 110px;
-  right: 40px;
+  top: 120px;
+  left: 50px;
 }
 
 .tour-tooltip-card.proj-step-2 {
@@ -170,7 +170,7 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 .tour-tooltip-card.proj-step-3 {
-  top: 250px;
+  top: 220px;
   left: 40px;
 }
 
@@ -180,11 +180,26 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 .tour-tooltip-card.proj-step-5 {
-  top: 200px;
-  right: 360px;
+  top: 180px;
+  left: 40px;
 }
 
 .tour-tooltip-card.proj-step-6 {
+  top: 180px;
+  left: 40px;
+}
+
+.tour-tooltip-card.proj-step-7 {
+  top: 180px;
+  left: 40px;
+}
+
+.tour-tooltip-card.proj-step-8 {
+  top: 120px;
+  right: 120px;
+}
+
+.tour-tooltip-card.proj-step-9 {
   bottom: 90px;
   right: 24px;
 }
@@ -201,7 +216,6 @@ html[data-theme="dark"] .tour-tooltip-card {
   transform: translateX(-50%);
 }
 
-
 /* Chat Room steps */
 .tour-tooltip-card.chat-step-0 {
   top: 150px;
@@ -210,18 +224,24 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 .tour-tooltip-card.chat-step-1 {
-  top: 250px;
+  top: 160px;
   left: 120px;
 }
 
 .tour-tooltip-card.chat-step-2 {
-  bottom: 90px;
+  bottom: 120px;
   left: 120px;
 }
 
 .tour-tooltip-card.chat-step-3 {
-  top: 250px;
-  right: 320px;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.chat-step-4 {
+  top: 140px;
+  right: 120px;
 }
 
 /* Office Board steps */
@@ -232,28 +252,66 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 .tour-tooltip-card.office-step-1 {
-  top: 190px;
+  top: 180px;
   left: 40px;
 }
 
 .tour-tooltip-card.office-step-2 {
-  top: 190px;
+  top: 180px;
   left: 120px;
 }
 
 .tour-tooltip-card.office-step-3 {
-  top: 190px;
+  top: 180px;
   left: 200px;
 }
 
 .tour-tooltip-card.office-step-4 {
-  top: 190px;
+  top: 180px;
   left: 280px;
+}
+
+.tour-tooltip-card.office-step-5 {
+  top: 140px;
+  right: 120px;
+}
+
+/* Video & Audio Call Room steps */
+.tour-tooltip-card.call-step-0 {
+  top: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.call-step-1 {
+  top: 180px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.call-step-2 {
+  top: 180px;
+  right: 20%;
+}
+
+.tour-tooltip-card.call-step-3 {
+  top: 250px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tour-tooltip-card.call-step-4 {
+  top: 140px;
+  right: 60px;
 }
 
 /* --- Mobile Viewport Tooltip Overrides --- */
 @media (max-width: 1024px) {
-  .tour-tooltip-card.proj-step-5 {
+  .tour-tooltip-card.proj-step-8,
+  .tour-tooltip-card.proj-step-9,
+  .tour-tooltip-card.chat-step-4,
+  .tour-tooltip-card.office-step-5,
+  .tour-tooltip-card.call-step-4 {
     top: auto;
     bottom: 90px;
     right: 24px;
@@ -261,16 +319,96 @@ html[data-theme="dark"] .tour-tooltip-card {
 }
 
 @media (max-width: 768px) {
+  .workspace-tour-trigger-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    margin-left: 4px;
+  }
+
   .tour-tooltip-card {
     position: fixed !important;
-    bottom: 24px !important;
-    left: 20px !important;
-    right: 20px !important;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    right: 12px !important;
     top: auto !important;
     width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: min(78vh, 520px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
     transform: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     box-sizing: border-box;
+    border-radius: 16px !important;
+    padding: 16px 18px !important;
+    gap: 10px !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(169, 63, 85, 0.4) !important;
+    z-index: 100000 !important;
+  }
+
+  .tour-tooltip-arrow {
+    display: none !important;
+  }
+
+  .tour-tooltip-header h4 {
+    font-size: 0.95rem !important;
+  }
+
+  .tour-tooltip-badge {
+    font-size: 0.68rem !important;
+    padding: 2px 7px !important;
+  }
+
+  .tour-tooltip-body p {
+    font-size: 0.86rem !important;
+    line-height: 1.5 !important;
+  }
+
+  .tour-tooltip-footer {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    margin-top: 6px !important;
+  }
+
+  .tour-skip-btn,
+  .tour-next-btn {
+    min-height: 40px !important;
+    padding: 8px 16px !important;
+    font-size: 0.84rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+    touch-action: manipulation;
+  }
+
+  .tour-next-btn {
+    flex: 1 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .workspace-tour-trigger-btn .btn-text {
+    display: none;
+  }
+
+  .workspace-tour-trigger-btn {
+    padding: 5px 8px;
+    border-radius: 8px;
+  }
+
+  .tour-tooltip-card {
+    left: 8px !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px) !important;
+    padding: 14px 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .tour-tooltip-body p {
+    font-size: 0.84rem !important;
   }
 }
 

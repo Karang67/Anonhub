@@ -1,6 +1,6 @@
 /**
  * @file config.js
- * @description Centralized environment configuration for AnonHub frontend.
+ * @description Centralized environment configuration for Trinetra frontend.
  * Manages API and Socket.IO URLs based on VITE_API_URL and VITE_SOCKET_URL environment variables.
  */
 

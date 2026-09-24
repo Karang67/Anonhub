@@ -33,11 +33,15 @@ export default function StandaloneEntry({ tabType }) {
         navigate(`/call/${encodeURIComponent(queryProject)}`, { replace: true });
       } else if (tabType === 'project') {
         navigate(`/projects/${encodeURIComponent(queryProject)}`, { replace: true });
+      } else if (tabType === 'document') {
+        navigate(`/document/${encodeURIComponent(queryProject)}`, { replace: true });
+      } else if (tabType === 'code') {
+        navigate(`/code/${encodeURIComponent(queryProject)}`, { replace: true });
       } else {
         navigate(`/projects/${encodeURIComponent(queryProject)}?tab=${tabType}`, { replace: true });
       }
     } else {
-      const activeRoom = sessionStorage.getItem(`anonhub-active-${tabType}-room`) || getCookie(`anonhub-active-${tabType}-room`);
+      const activeRoom = sessionStorage.getItem(`trinetra-active-${tabType}-room`) || sessionStorage.getItem(`anonhub-active-${tabType}-room`) || getCookie(`trinetra-active-${tabType}-room`) || getCookie(`anonhub-active-${tabType}-room`);
       if (activeRoom) {
         const keyPrefix = tabType === 'chat' ? 'chat' : 'project';
         const savedKey = sessionStorage.getItem(`accesskey_${keyPrefix}_${activeRoom}`) || getCookie(`accesskey_${keyPrefix}_${activeRoom}`);
@@ -48,6 +52,10 @@ export default function StandaloneEntry({ tabType }) {
             navigate(`/call/${encodeURIComponent(activeRoom)}`, { replace: true });
           } else if (tabType === 'project') {
             navigate(`/projects/${encodeURIComponent(activeRoom)}`, { replace: true });
+          } else if (tabType === 'document') {
+            navigate(`/document/${encodeURIComponent(activeRoom)}`, { replace: true });
+          } else if (tabType === 'code') {
+            navigate(`/code/${encodeURIComponent(activeRoom)}`, { replace: true });
           } else {
             navigate(`/projects/${encodeURIComponent(activeRoom)}?tab=${tabType}`, { replace: true });
           }
@@ -74,6 +82,7 @@ export default function StandaloneEntry({ tabType }) {
         const keyPrefix = isChat ? 'chat' : 'project';
         sessionStorage.setItem(`accesskey_${keyPrefix}_${roomName}`, accessKey);
         setCookie(`accesskey_${keyPrefix}_${roomName}`, accessKey);
+        setCookie(`trinetra-active-${tabType}-room`, roomName);
         setCookie(`anonhub-active-${tabType}-room`, roomName);
         
         if (data.ownerToken) {
@@ -90,6 +99,10 @@ export default function StandaloneEntry({ tabType }) {
           navigate(`/call/${encodeURIComponent(roomName)}`);
         } else if (tabType === 'project') {
           navigate(`/projects/${encodeURIComponent(roomName)}`);
+        } else if (tabType === 'document') {
+          navigate(`/document/${encodeURIComponent(roomName)}`);
+        } else if (tabType === 'code') {
+          navigate(`/code/${encodeURIComponent(roomName)}`);
         } else {
           navigate(`/projects/${encodeURIComponent(roomName)}?tab=${tabType}`);
         }

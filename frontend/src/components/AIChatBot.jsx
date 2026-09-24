@@ -9,14 +9,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, X, Send, Sparkles, MessageCircle, RefreshCw } from 'lucide-react';
 import { getApiUrl } from '../config';
+import { useFeatureAccess } from '../context/FeatureAccessContext';
 import './AIChatBot.css';
 
 export default function AIChatBot() {
+  const { isFeatureVisible, can } = useFeatureAccess();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: 'model',
-      text: "👋 Hi! I'm your **AnonHub AI Copilot**. I can help you write code, debug layout alignment issues, draft document templates, or brainstorm project ideas. How can I help you today?"
+      text: "👋 Hi! I'm your **Trinetra AI Copilot**. I can help you write code, debug layout alignment issues, draft document templates, or brainstorm project ideas. How can I help you today?"
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -27,7 +29,7 @@ export default function AIChatBot() {
   // Drag position state — initialized from localStorage or defaults to CSS styling
   const getInitialPos = () => {
     try {
-      const saved = localStorage.getItem('anonhub-ai-bot-pos');
+      const saved = localStorage.getItem('trinetra-ai-bot-pos') || localStorage.getItem('anonhub-ai-bot-pos');
       if (saved) {
         const { x, y } = JSON.parse(saved);
         // Clamp to viewport in case screen size changed
@@ -35,7 +37,9 @@ export default function AIChatBot() {
         const clampedY = Math.min(Math.max(y, 0), window.innerHeight - 64);
         return { x: clampedX, y: clampedY };
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Failed to parse saved chatbot position:", e);
+    }
     return null; // Fallback to CSS rules (bottom-right positioning)
   };
 
@@ -57,7 +61,7 @@ export default function AIChatBot() {
   useEffect(() => {
     if (!pos) return;
     try {
-      localStorage.setItem('anonhub-ai-bot-pos', JSON.stringify(pos));
+      localStorage.setItem('trinetra-ai-bot-pos', JSON.stringify(pos));
     } catch (e) {}
   }, [pos]);
 
@@ -192,7 +196,7 @@ export default function AIChatBot() {
       const data = await response.json();
       if (response.ok) {
         const reply = data.response || "No response received.";
-        if (reply.includes('[AnonHub AI Assistant - Mock Mode]')) {
+        if (reply.includes('[Trinetra AI Assistant - Mock Mode]') || reply.includes('[AnonHub AI Assistant - Mock Mode]')) {
           setIsMockMode(true);
         } else {
           setIsMockMode(false);
@@ -235,7 +239,12 @@ export default function AIChatBot() {
           </pre>
         );
       }
-      let line = part;
+      let line = part
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
       line = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       line = line.replace(/`(.*?)`/g, '<code class="ai-chat-inline-code">$1</code>');
       line = line.replace(/^\*\s(.*)$/gm, '• $1');
@@ -252,6 +261,10 @@ export default function AIChatBot() {
     "Draft a standard project README structure",
     "Write a bubble sort algorithm in JavaScript"
   ];
+
+  if (!isFeatureVisible('ai.chatbot') || !can('ai.chatbot', 'USE')) {
+    return null;
+  }
 
   return (
     <>

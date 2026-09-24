@@ -44,7 +44,7 @@ class CallSessionManager {
         timestamp: Date.now(),
         ...extra
       };
-      sessionStorage.setItem(`anonhub_active_call_${roomName}`, JSON.stringify(state));
+      sessionStorage.setItem(`trinetra_active_call_${roomName}`, JSON.stringify(state));
     } catch (e) { }
   }
 
@@ -53,10 +53,11 @@ class CallSessionManager {
     try {
       const targetRoom = roomName || this.activeRoom;
       if (targetRoom) {
+        sessionStorage.removeItem(`trinetra_active_call_${targetRoom}`);
         sessionStorage.removeItem(`anonhub_active_call_${targetRoom}`);
       }
       Object.keys(sessionStorage).forEach(key => {
-        if (key.startsWith('anonhub_active_call_')) {
+        if (key.startsWith('trinetra_active_call_') || key.startsWith('anonhub_active_call_')) {
           sessionStorage.removeItem(key);
         }
       });
@@ -66,7 +67,7 @@ class CallSessionManager {
   getPersistedCallState(roomName) {
     if (typeof sessionStorage === 'undefined' || !roomName) return null;
     try {
-      const raw = sessionStorage.getItem(`anonhub_active_call_${roomName}`);
+      const raw = sessionStorage.getItem(`trinetra_active_call_${roomName}`) || sessionStorage.getItem(`anonhub_active_call_${roomName}`);
       return raw ? JSON.parse(raw) : null;
     } catch (e) {
       return null;

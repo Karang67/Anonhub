@@ -82,7 +82,7 @@ export default function PWAInstallPrompt({ variant = 'navbar' }) {
             <Smartphone size={20} />
           </div>
           <div className="pwa-banner-text">
-            <strong>Install AnonHub App</strong>
+            <strong>Install Trinetra App</strong>
             <span>Fast offline access, video calls &amp; instant desktop/mobile workspace</span>
           </div>
         </div>
@@ -103,7 +103,7 @@ export default function PWAInstallPrompt({ variant = 'navbar' }) {
       <button
         onClick={handleInstallClick}
         className="pwa-nav-btn"
-        title="Install AnonHub PWA Desktop/Mobile App"
+        title="Install Trinetra PWA Desktop/Mobile App"
       >
         <Download size={14} />
         <span className="btn-text">Install App</span>
@@ -113,8 +113,8 @@ export default function PWAInstallPrompt({ variant = 'navbar' }) {
         <div className="pwa-ios-modal-overlay" onClick={() => setShowIOSModal(false)}>
           <div className="pwa-ios-modal" onClick={e => e.stopPropagation()}>
             <button className="pwa-modal-close" onClick={() => setShowIOSModal(false)}><X size={16} /></button>
-            <h3>Install AnonHub on iOS</h3>
-            <p>To install AnonHub as an app on your iPhone or iPad:</p>
+            <h3>Install Trinetra on iOS</h3>
+            <p>To install Trinetra as an app on your iPhone or iPad:</p>
             <ol>
               <li>Tap the <strong>Share</strong> icon in Safari's bottom toolbar.</li>
               <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>

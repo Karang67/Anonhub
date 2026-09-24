@@ -10,9 +10,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut, MousePointer, Square, Circle as CircleIcon, Triangle as TriangleIcon, Minus, Scissors, Undo, Redo, Eraser, Shapes, Diamond, ArrowRight, Star, Heart, Upload, Shield, Key, Lock } from 'lucide-react';
-import { Canvas, Rect, Circle, PencilBrush, Triangle, Line, Polygon, Path } from 'fabric';
+import { useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { Palette, FileText, Code2, Trash2, Download, Send, RefreshCw, MessageSquare, X, Link, Copy, Check, History, KeyRound, Pencil, BarChart3, Save, Clock, HelpCircle, LogOut, MousePointer, Square, Circle as CircleIcon, Triangle as TriangleIcon, Minus, Scissors, Undo, Redo, Eraser, Shapes, Diamond, ArrowRight, Star, Heart, Upload, Shield, Key, Lock, Type, ZoomIn, ZoomOut, Maximize2, AlertTriangle, Image, ChevronUp, ChevronDown, Search, Users, Video, Monitor, Sparkles, Mic, MicOff, Camera, Crown } from 'lucide-react';
+import { Canvas, Rect, Circle, PencilBrush, Triangle, Line, Polygon, Path, IText } from 'fabric';
 import { Editor as TinyMCEEditor } from '@tinymce/tinymce-react';
 import Editor from '@monaco-editor/react';
 import QRCode from 'qrcode';
@@ -20,27 +20,36 @@ import QRCode from 'qrcode';
 import { getApiUrl } from '../config';
 import { initSocket, getCookie, setCookie, deleteCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
+import { deleteRoom } from '../services/api';
+import { useFeatureAccess } from '../context/FeatureAccessContext';
 import AccessKeyModal from '../components/AccessKeyModal';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
+import WhiteboardCanvas from '../components/whiteboard/WhiteboardCanvas';
 import './ProjectRoom.css';
 
 /**
  * ProjectRoom Component
  * Manages the workspace components, socket listeners, and canvas state stacks.
  */
-export default function ProjectRoom() {
+export default function ProjectRoom({ defaultTab, standalone }) {
   const { projectName } = useParams();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const { isFeatureVisible, can } = useFeatureAccess();
 
-  // standaloneMode checks if the workspace was loaded targeting a single specific pane (e.g. document/code)
-  const queryTab = searchParams.get('tab');
-  const standaloneMode = queryTab === 'document' || queryTab === 'code';
+  // standaloneMode checks if the workspace was loaded targeting a single specific pane (e.g. /document/:name, /code/:name, or ?tab=document)
+  const pathTab = location.pathname.startsWith('/document') ? 'document' : (location.pathname.startsWith('/code') ? 'code' : null);
+  const queryTab = defaultTab || pathTab || searchParams.get('tab');
+  const standaloneMode = Boolean(standalone || pathTab || queryTab === 'document' || queryTab === 'code');
 
   // Panel management state hooks
   const [activeTab, setActiveTab] = useState(queryTab || 'sketch');
   const [theme, setTheme] = useState('modern');
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+  const [micActive, setMicActive] = useState(true);
+  const [cameraActive, setCameraActive] = useState(true);
 
   // Connection & Gating state hooks
   const [username, setUsername] = useState('');
@@ -63,6 +72,12 @@ export default function ProjectRoom() {
   const [claimingOwnership, setClaimingOwnership] = useState(false);
   const [newCustomOwnerKey, setNewCustomOwnerKey] = useState('');
   const [customOwnerKeyMsg, setCustomOwnerKeyMsg] = useState(null);
+
+  // Room Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingRoom, setDeletingRoom] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Messaging state hooks
   const [chatMessages, setChatMessages] = useState([]);
@@ -475,6 +490,32 @@ export default function ProjectRoom() {
     socketRef.current?.emit('set owner key', { projectName, newOwnerKey: key });
   };
 
+  const handleDeleteProjectRoom = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== projectName.trim().toLowerCase()) {
+      setDeleteError(`Please type "${projectName}" exactly to confirm.`);
+      return;
+    }
+    const ownerToken = localStorage.getItem(`owner_token_project_${projectName}`)
+      || localStorage.getItem(`owner_token_${projectName}`)
+      || localStorage.getItem(`owner_token_project_${projectName.toLowerCase()}`);
+    if (!ownerToken) {
+      setDeleteError('Owner token not found in this browser session.');
+      return;
+    }
+    setDeletingRoom(true);
+    setDeleteError('');
+    try {
+      await deleteRoom('project', projectName, ownerToken);
+      localStorage.removeItem(`owner_token_project_${projectName}`);
+      localStorage.removeItem(`owner_token_${projectName}`);
+      setShowDeleteModal(false);
+      navigate('/');
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete room.');
+      setDeletingRoom(false);
+    }
+  };
+
   // Typing status clear out intervals
   useEffect(() => {
     const interval = setInterval(() => {
@@ -629,38 +670,53 @@ export default function ProjectRoom() {
       return [
         {
           title: 'Project Room Guide',
-          body: 'Welcome to your <strong>Project Workspace</strong>! This workspace lets you and your team work on whiteboards, documents, and code simultaneously in real-time.',
+          body: 'Welcome to your <strong>Project Workspace</strong>! This all-in-one workspace lets you and your team collaborate on whiteboards, documents, code, smart notes, live polls, snippets, and activity timelines simultaneously in real time.',
           class: 'proj-step-0'
         },
         {
-          title: 'Workspace Panels',
-          body: 'Use these <strong>Tabs</strong> to toggle between the <strong>Sketch Board</strong> (drawing canvas), <strong>Document Board</strong> (rich editor & files), and <strong>Coding Board</strong> (interactive compiler).',
+          title: 'Workspace Navigation Tabs',
+          body: 'Use these <strong>Tabs</strong> to toggle between the <strong>Sketch Board</strong>, <strong>Document Board</strong>, <strong>Coding Board</strong>, <strong>Smart Notes</strong>, <strong>Polls</strong>, <strong>Snippets</strong>, and <strong>Timeline</strong>.',
           class: 'proj-step-1'
         },
         {
           title: 'Sketch Board Controls',
-          body: 'On the <strong>Sketch Board</strong>, use the Pen, Eraser, shapes, and Undo/Redo tools to brainstorm. All drawings are instantly synchronized with your collaborators.',
+          body: 'On the <strong>Sketch Board</strong>, brainstorm with the Pen, Laser Pointer, Eraser, Geometric Shapes, and Undo/Redo tools. All drawings sync instantly, and can be exported as PNG or PDF.',
           class: 'proj-step-2'
         },
         {
           title: 'Document Board & Files',
-          body: 'On the <strong>Document Board</strong>, write formatted documentation with our editor, and upload files in the <strong>Project Attachments</strong> panel for others to download.',
+          body: 'On the <strong>Document Board</strong>, co-edit formatted docs with our rich editor, view version snapshots, and upload files in the <strong>Project Attachments</strong> panel for instant team downloads.',
           class: 'proj-step-3'
         },
         {
           title: 'Coding Board & Sandbox',
-          body: 'On the <strong>Coding Board</strong>, select a language, write code in a VS Code style editor, and click <strong>Run Code</strong> to compile it instantly in our sandboxed runner.',
+          body: 'On the <strong>Coding Board</strong>, choose from JS, Python, TS, HTML/CSS, C++, or Java. Write code with syntax highlighting, run code in our sandboxed compiler, or launch a live HTML/JS browser preview.',
           class: 'proj-step-4'
         },
         {
-          title: 'Real-Time Chat & Roster',
-          body: 'Use the <strong>Project Chat</strong> sidebar to message your team anonymously and view active collaborators in the project.',
+          title: 'Smart Notes & AI Organize',
+          body: 'Capture raw thoughts and action items in <strong>Smart Notes</strong>. Click <strong>AI Organize</strong> to instantly structure messy text dumps into formatted summaries with action checklists.',
           class: 'proj-step-5'
         },
         {
-          title: 'AI Chat Copilot',
-          body: 'Finally, need some quick help? Click the floating <strong>AI Copilot</strong> button in the bottom right corner to get coding tips, layout alignment help, or templates immediately from Gemini. Have fun collaborating!',
+          title: 'Live Team Polls',
+          body: 'Need team consensus? Create anonymous <strong>Live Polls</strong> with custom expiration timers. Votes and percentages update in real-time across all collaborators.',
           class: 'proj-step-6'
+        },
+        {
+          title: 'Code Snippets Library',
+          body: 'Save and organize reusable boilerplate code in the <strong>Snippets</strong> library. Search, filter by language, copy, or insert snippets directly into the Coding Board with 1 click.',
+          class: 'proj-step-7'
+        },
+        {
+          title: 'Permissions, Keys & Version History',
+          body: 'Use the top toolbar to manage <strong>Room Permissions</strong> (drawing, editing, code execution), rotate the <strong>Access Key</strong>, claim ownership, or restore past <strong>Version Snapshots</strong>.',
+          class: 'proj-step-8'
+        },
+        {
+          title: 'Project Chat & AI Copilot',
+          body: 'Use the <strong>Project Chat</strong> sidebar to message team members and track active collaborators. Need assistance? Click the floating <strong>AI Copilot</strong> button in the bottom right for instant coding, formatting, or design help!',
+          class: 'proj-step-9'
         }
       ];
     }
@@ -683,7 +739,7 @@ export default function ProjectRoom() {
   const [brushColor, setBrushColor] = useState('#A93F55');
   const [showStylingPopover, setShowStylingPopover] = useState(false);
   const [showShapesPopover, setShowShapesPopover] = useState(false);
-  const [chatVisible, setChatVisible] = useState(true);
+  const [chatVisible, setChatVisible] = useState(!standaloneMode);
 
   // Core module references
   const socketRef = useRef(null);
@@ -927,7 +983,7 @@ export default function ProjectRoom() {
       setTheme(e.detail.theme);
     };
     window.addEventListener('themeChanged', handleThemeChange);
-    setTheme(localStorage.getItem('anonhub-theme') || 'modern');
+    setTheme(localStorage.getItem('trinetra-theme') || localStorage.getItem('anonhub-theme') || 'modern');
     return () => window.removeEventListener('themeChanged', handleThemeChange);
   }, []);
 
@@ -945,20 +1001,24 @@ export default function ProjectRoom() {
     const handleStartTour = () => {
       setTourStep(0);
     };
+    window.addEventListener('start-trinetra-tour', handleStartTour);
     window.addEventListener('start-anonhub-tour', handleStartTour);
 
     // Auto-trigger for first-time visitors
-    const tourKey = standaloneMode ? `anonhub_standalone_${activeTab}_tour_seen` : 'anonhub_project_tour_seen';
-    const hasSeenTour = localStorage.getItem(tourKey);
+    const tourKey = standaloneMode ? `trinetra_standalone_${activeTab}_tour_seen` : 'trinetra_project_tour_seen';
+    const legacyTourKey = standaloneMode ? `anonhub_standalone_${activeTab}_tour_seen` : 'anonhub_project_tour_seen';
+    const hasSeenTour = localStorage.getItem(tourKey) || localStorage.getItem(legacyTourKey);
     if (!hasSeenTour) {
       const t = setTimeout(() => setTourStep(0), 1500);
       return () => {
         clearTimeout(t);
+        window.removeEventListener('start-trinetra-tour', handleStartTour);
         window.removeEventListener('start-anonhub-tour', handleStartTour);
       };
     }
 
     return () => {
+      window.removeEventListener('start-trinetra-tour', handleStartTour);
       window.removeEventListener('start-anonhub-tour', handleStartTour);
     };
   }, [standaloneMode, activeTab]);
@@ -974,6 +1034,15 @@ export default function ProjectRoom() {
       setActiveTab('document');
     } else if (currentStepClass === 'proj-step-4') {
       setActiveTab('code');
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+    } else if (currentStepClass === 'proj-step-5') {
+      setActiveTab('notes');
+    } else if (currentStepClass === 'proj-step-6') {
+      setActiveTab('polls');
+    } else if (currentStepClass === 'proj-step-7') {
+      setActiveTab('snippets');
+    } else if (currentStepClass === 'proj-step-8') {
+      setActiveTab('timeline');
     }
   }, [tourStep, standaloneMode]);
 
@@ -985,11 +1054,22 @@ export default function ProjectRoom() {
   // Save active standalone sessions for the current browser session
   useEffect(() => {
     if (!projectName) return;
+    sessionStorage.setItem('trinetra-active-project-room', projectName);
+    sessionStorage.setItem('anonhub-active-project-room', projectName);
+    sessionStorage.setItem('trinetra-active-whiteboard-room', projectName);
+    sessionStorage.setItem('anonhub-active-whiteboard-room', projectName);
+    setCookie('trinetra-active-project-room', projectName);
+    setCookie('anonhub-active-project-room', projectName);
+
     if (activeTab === 'document') {
+      sessionStorage.setItem('trinetra-active-document-room', projectName);
       sessionStorage.setItem('anonhub-active-document-room', projectName);
+      setCookie('trinetra-active-document-room', projectName);
       setCookie('anonhub-active-document-room', projectName);
     } else if (activeTab === 'code') {
+      sessionStorage.setItem('trinetra-active-code-room', projectName);
       sessionStorage.setItem('anonhub-active-code-room', projectName);
+      setCookie('trinetra-active-code-room', projectName);
       setCookie('anonhub-active-code-room', projectName);
     }
   }, [projectName, activeTab]);
@@ -1018,7 +1098,9 @@ export default function ProjectRoom() {
     socket.on('set username', (name) => {
       setUsername(name);
       setNicknameInput(name);
+      document.cookie = `trinetra-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('trinetra-username', name);
       sessionStorage.setItem('anonhub-username', name);
       if (socketRef.current) {
         socketRef.current.auth = { ...socketRef.current.auth, username: name };
@@ -1028,7 +1110,9 @@ export default function ProjectRoom() {
     socket.on('username updated', (name) => {
       setUsername(name);
       setNicknameInput(name);
+      document.cookie = `trinetra-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('trinetra-username', name);
       sessionStorage.setItem('anonhub-username', name);
       if (socketRef.current) {
         socketRef.current.auth = { ...socketRef.current.auth, username: name };
@@ -1036,6 +1120,7 @@ export default function ProjectRoom() {
     });
 
     socket.on('set session id', (id) => {
+      document.cookie = `trinetra-session-id=${encodeURIComponent(id)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-session-id=${encodeURIComponent(id)}; path=/; SameSite=Lax`;
     });
 
@@ -1089,6 +1174,11 @@ export default function ProjectRoom() {
     socket.on('join success', () => {
       setShowOverlay(false);
       setOverlayError('');
+    });
+
+    socket.on('room deleted', ({ room, message }) => {
+      alert(message || 'This room has been permanently deleted by the owner.');
+      navigate('/');
     });
 
     // Chat events
@@ -1278,7 +1368,7 @@ export default function ProjectRoom() {
         setPolls(list);
         addTimelineEvent('📊 Poll status updated');
         playNotificationSound();
-        triggerWebNotification('AnonHub Polls', 'A workspace poll was updated or created.');
+        triggerWebNotification('Trinetra Polls', 'A workspace poll was updated or created.');
       } catch (err) {
         console.error('Failed to parse polls:', err);
       }
@@ -1349,13 +1439,19 @@ export default function ProjectRoom() {
 
   const handleLeaveRoom = () => {
     if (standaloneMode) {
+      sessionStorage.removeItem(`trinetra-active-${activeTab}-room`);
       sessionStorage.removeItem(`anonhub-active-${activeTab}-room`);
+      deleteCookie(`trinetra-active-${activeTab}-room`);
       deleteCookie(`anonhub-active-${activeTab}-room`);
       deleteCookie(`accesskey_project_${projectName}`);
       navigate(`/${activeTab}`);
     } else {
+      sessionStorage.removeItem('trinetra-active-document-room');
+      sessionStorage.removeItem('trinetra-active-code-room');
       sessionStorage.removeItem('anonhub-active-document-room');
       sessionStorage.removeItem('anonhub-active-code-room');
+      deleteCookie('trinetra-active-document-room');
+      deleteCookie('trinetra-active-code-room');
       deleteCookie('anonhub-active-document-room');
       deleteCookie('anonhub-active-code-room');
       deleteCookie(`accesskey_project_${projectName}`);
@@ -1394,14 +1490,17 @@ export default function ProjectRoom() {
     // Instantiate drawing board parameters
     const canvas = new Canvas(canvasRef.current, {
       isDrawingMode: drawingTool === 'pen' || drawingTool === 'eraser',
-      backgroundColor: '#ffffff',
+      backgroundColor: 'transparent',
       preserveObjectStacking: true,
       width: 800,
       height: 600
     });
 
     // Fabric v7 PencilBrush registration
-    canvas.freeDrawingBrush = new PencilBrush(canvas);
+    const brush = new PencilBrush(canvas);
+    brush.width = brushWidth;
+    brush.color = drawingTool === 'eraser' ? '#0d111c' : brushColor;
+    canvas.freeDrawingBrush = brush;
     fabricCanvasRef.current = canvas;
 
     // Load initial/saved whiteboard content if present
@@ -1639,9 +1738,12 @@ export default function ProjectRoom() {
     if (!canvas) return;
 
     canvas.isDrawingMode = drawingTool === 'pen' || drawingTool === 'eraser';
+    if (!canvas.freeDrawingBrush) {
+      canvas.freeDrawingBrush = new PencilBrush(canvas);
+    }
     if (canvas.freeDrawingBrush) {
       canvas.freeDrawingBrush.width = brushWidth;
-      canvas.freeDrawingBrush.color = drawingTool === 'eraser' ? '#ffffff' : brushColor;
+      canvas.freeDrawingBrush.color = drawingTool === 'eraser' ? '#0d111c' : brushColor;
     }
   }, [drawingTool, brushWidth, brushColor]);
 
@@ -1820,6 +1922,84 @@ export default function ProjectRoom() {
     canvas.setActiveObject(heart);
     canvas.renderAll();
   };
+
+  const addText = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = false;
+    setDrawingTool('select');
+    const text = new IText('Type text here...', {
+      left: 100,
+      top: 100,
+      fontFamily: 'Inter, sans-serif',
+      fontSize: 20,
+      fill: brushColor,
+    });
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
+  };
+
+  const exportWhiteboardPng = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 });
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `${projectName}_whiteboard.png`;
+    a.click();
+  };
+
+  const handleZoomIn = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const newZoom = Math.min(canvas.getZoom() * 1.25, 5);
+    canvas.setZoom(newZoom);
+    canvas.renderAll();
+  };
+
+  const handleZoomOut = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const newZoom = Math.max(canvas.getZoom() / 1.25, 0.2);
+    canvas.setZoom(newZoom);
+    canvas.renderAll();
+  };
+
+  const handleResetZoom = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const pane = document.getElementById('pane-sketch');
+    const parentEl = pane ? pane.parentElement : null;
+    const parentWidth = parentEl ? parentEl.clientWidth : (window.innerWidth - 32);
+    const width = Math.min(pane ? pane.clientWidth || parentWidth : parentWidth, parentWidth);
+    canvas.setZoom(width / 800);
+    canvas.renderAll();
+  };
+
+  // Keyboard shortcuts for whiteboard (U=undo, R=redo, E=eraser, P=pen, Delete=delete selected)
+  useEffect(() => {
+    if (activeTab !== 'sketch') return;
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
+      const canvas = fabricCanvasRef.current;
+      if (canvas?.getActiveObject()?.isEditing) return;
+
+      if ((e.key === 'u' || e.key === 'U') && !e.ctrlKey && !e.metaKey) {
+        handleUndo();
+      } else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
+        handleRedo();
+      } else if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey) {
+        setDrawingTool('eraser');
+      } else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey) {
+        setDrawingTool('pen');
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab]);
 
   /**
    * Deletes currently selected canvas element(s).
@@ -2952,6 +3132,10 @@ export default function ProjectRoom() {
           type={versionPanelType}
           socket={socketRef.current}
           isOwner={isOwner}
+          ownerToken={
+            localStorage.getItem(`owner_token_project_${projectName}`) ||
+            localStorage.getItem(`owner_token_${projectName}`) || ''
+          }
           onClose={() => setShowVersionPanel(false)}
         />
       )}
@@ -3116,7 +3300,169 @@ export default function ProjectRoom() {
         </div>
       )}
 
-      <main className={`project-editor-wrapper ${chatVisible ? '' : 'sidebar-hidden'}`}>
+      {/* Top Project Subheader Bar */}
+      <div className="project-top-subbar">
+        <div className="subbar-left">
+          {/* Project Title & Nickname Edit */}
+          <div className="project-title-group">
+            <span className="project-label">Project: <strong className="project-name-highlight">{projectName}</strong></span>
+            <button
+              className="subbar-icon-btn"
+              onClick={() => { setNicknameInput(username); setIsEditingNickname(true); }}
+              title="Change Nickname"
+            >
+              <Pencil size={13} />
+            </button>
+          </div>
+
+          {/* User Badge (Avatar Circle + Name + Role Pill) */}
+          {isEditingNickname ? (
+            <div className="subbar-nickname-edit">
+              <input
+                className="subbar-nick-input"
+                value={nicknameInput}
+                onChange={e => setNicknameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveNickname();
+                  else if (e.key === 'Escape') setIsEditingNickname(false);
+                }}
+                autoFocus
+                maxLength={40}
+                placeholder="New nickname..."
+              />
+              <button className="nick-action-btn check" onClick={handleSaveNickname} title="Save"><Check size={12} /></button>
+              <button className="nick-action-btn cancel" onClick={() => setIsEditingNickname(false)} title="Cancel"><X size={12} /></button>
+            </div>
+          ) : (
+            <div className="subbar-user-badge">
+              <span className="user-avatar-circle">{(username || 'K').charAt(0).toUpperCase()}</span>
+              <span className="user-name-text">{username || 'Anonymous'}</span>
+              {isOwner ? (
+                <span className="user-role-pill owner">Owner</span>
+              ) : (
+                <span className="user-role-pill member">Member</span>
+              )}
+            </div>
+          )}
+
+          {/* Nav Tabs */}
+          <div className="subbar-nav-tabs">
+            {isFeatureVisible('project.sketch_board') && (
+              <button
+                className={`subbar-tab ${activeTab === 'sketch' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sketch')}
+              >
+                <Palette size={15} />
+                <span>Sketch Board</span>
+              </button>
+            )}
+            {isFeatureVisible('project.document_board') && (
+              <button
+                className={`subbar-tab ${activeTab === 'document' ? 'active' : ''}`}
+                onClick={() => setActiveTab('document')}
+              >
+                <FileText size={15} />
+                <span>Document Board</span>
+              </button>
+            )}
+            {isFeatureVisible('project.code_editor') && (
+              <button
+                className={`subbar-tab ${activeTab === 'code' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('code');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
+              >
+                <Code2 size={15} />
+                <span>Coding Board</span>
+              </button>
+            )}
+            {isFeatureVisible('project.smart_notes') && (
+              <button
+                className={`subbar-tab ${activeTab === 'notes' ? 'active' : ''}`}
+                onClick={() => setActiveTab('notes')}
+              >
+                <FileText size={15} />
+                <span>Smart Notes</span>
+              </button>
+            )}
+            {isFeatureVisible('project.polls') && (
+              <button
+                className={`subbar-tab ${activeTab === 'polls' ? 'active' : ''}`}
+                onClick={() => setActiveTab('polls')}
+              >
+                <BarChart3 size={15} />
+                <span>Polls</span>
+              </button>
+            )}
+            {isFeatureVisible('project.snippets') && (
+              <button
+                className={`subbar-tab ${activeTab === 'snippets' ? 'active' : ''}`}
+                onClick={() => setActiveTab('snippets')}
+              >
+                <Save size={15} />
+                <span>Snippets</span>
+              </button>
+            )}
+            <button
+              className={`subbar-tab ${activeTab === 'timeline' ? 'active' : ''}`}
+              onClick={() => setActiveTab('timeline')}
+            >
+              <Clock size={15} />
+              <span>Timeline</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="subbar-right">
+          {isOwner ? (
+            <button
+              onClick={() => setShowPermissionsModal(true)}
+              className="subbar-tool-btn"
+              title="Room Permissions Settings"
+            >
+              <Shield size={14} /> <span>Permissions</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => { setShowOwnerKeyModal(true); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+              className="subbar-tool-btn"
+              title="Claim room owner status with access key"
+            >
+              <Key size={14} /> <span>Owner Key</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="subbar-tool-btn"
+            title="Share invite link"
+          >
+            <Link size={14} /> <span>Share</span>
+          </button>
+
+          <button
+            onClick={handleLeaveRoom}
+            className="subbar-leave-btn"
+            title="Leave this project workspace"
+          >
+            <LogOut size={14} /> <span>Leave Workspace</span>
+          </button>
+        </div>
+      </div>
+
+      <main className={`project-power-workspace ${standaloneMode ? 'standalone-mode' : ''} ${chatVisible ? '' : 'chat-hidden'}`}>
+        {/* Floating mobile toggle for chat drawer */}
+        <button
+          className="floating-chat-toggle"
+          onClick={() => setMobileChatOpen(prev => !prev)}
+          title="Toggle Project Chat & Calls"
+          aria-label="Toggle Project Chat & Calls"
+        >
+          <MessageSquare size={20} />
+          {chatMessages.length > 0 && <span className="mobile-chat-unread-dot" />}
+        </button>
+
         {/* Share / Invite Modal */}
         {showShareModal && (
           <div className="chat-lightbox" onClick={() => setShowShareModal(false)}>
@@ -3153,409 +3499,24 @@ export default function ProjectRoom() {
           </div>
         )}
 
-        <div className="collaboration-editor">
-          <div className="workspace-header-bar">
-            <div className="workspace-title-area">
-              <div className="workspace-title-text-group">
-                <h2>Project: {projectName}</h2>
-
-                <div className="header-room-name-area">
-                  {isEditingNickname ? (
-                    <div className="nickname-edit-row">
-                      <input
-                        className="nickname-input"
-                        value={nicknameInput}
-                        onChange={e => setNicknameInput(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleSaveNickname();
-                          else if (e.key === 'Escape') setIsEditingNickname(false);
-                        }}
-                        autoFocus
-                        maxLength={50}
-                        placeholder="Your nickname..."
-                      />
-                      <button className="nickname-save-btn" onClick={handleSaveNickname} title="Save nickname">
-                        <Check size={13} />
-                      </button>
-                      <button className="nickname-cancel-btn" onClick={() => setIsEditingNickname(false)} title="Cancel">
-                        <X size={13} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className="nickname-edit-trigger"
-                      onClick={() => { setNicknameInput(username); setIsEditingNickname(true); }}
-                      title="Change your nickname"
-                    >
-                      <Pencil size={10} />
-                      <span className="nickname-display">{username}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="workspace-title-actions">
-                {isOwner ? (
-                  <button
-                    onClick={() => setShowPermissionsModal(true)}
-                    className="workspace-tour-trigger-btn"
-                    title="Room Permissions Settings"
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'var(--primary-color)', color: 'white' }}
-                  >
-                    <Shield size={13} /> <span className="btn-text">Permissions</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => { setShowOwnerKeyModal(true); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
-                    className="workspace-tour-trigger-btn"
-                    title="Claim room owner status with access key"
-                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <Key size={13} /> <span className="btn-text">Enter Owner Key</span>
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="workspace-tour-trigger-btn"
-                  title="Share invite link"
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <Link size={13} /> <span className="btn-text">Share</span>
-                </button>
-                <button
-                  onClick={() => setChatVisible(!chatVisible)}
-                  className="workspace-tour-trigger-btn"
-                  title={chatVisible ? "Hide Sidebar Chat & Users" : "Show Sidebar Chat & Users"}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <MessageSquare size={13} /> <span className="btn-text">{chatVisible ? "Hide Chat" : "Show Chat"}</span>
-                </button>
-                <button
-                  onClick={() => setTourStep(0)}
-                  className="workspace-tour-trigger-btn"
-                  title="Start Room Tour"
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                >
-                  <HelpCircle size={13} /> <span className="btn-text">Tour Guide</span>
-                </button>
-                <button
-                  onClick={handleLeaveRoom}
-                  className="workspace-tour-trigger-btn"
-                  title={standaloneMode ? "Leave this board session" : "Leave this project workspace"}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#e05252', color: 'white' }}
-                >
-                  <LogOut size={13} /> <span className="btn-text">{standaloneMode ? "Leave Board" : "Leave Workspace"}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Show tab buttons only if not in standalone (document.html / code.html) mode */}
-            {!standaloneMode && (
-              <div className="workspace-tabs">
-                <button
-                  className={`tab-btn ${activeTab === 'sketch' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('sketch')}
-                >
-                  <Palette size={16} />
-                  <span className="tab-text">Sketch Board</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'document' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('document')}
-                >
-                  <FileText size={16} />
-                  <span className="tab-text">Document Board</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'code' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveTab('code');
-                    setTimeout(() => {
-                      // Trigger monaco layout adjustment
-                      window.dispatchEvent(new Event('resize'));
-                    }, 100);
-                  }}
-                >
-                  <Code2 size={16} />
-                  <span className="tab-text">Coding Board</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('notes')}
-                >
-                  <FileText size={16} />
-                  <span className="tab-text">Smart Notes</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'polls' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('polls')}
-                >
-                  <BarChart3 size={16} />
-                  <span className="tab-text">Polls</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'snippets' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('snippets')}
-                >
-                  <Save size={16} />
-                  <span className="tab-text">Snippets</span>
-                </button>
-                <button
-                  className={`tab-btn ${activeTab === 'timeline' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('timeline')}
-                >
-                  <Clock size={16} />
-                  <span className="tab-text">Timeline</span>
-                </button>
-              </div>
-            )}
-          </div>
-
+        {/* 1. MAIN LEFT WORKSPACE CARD */}
+        <div className="project-main-workspace-card">
           <div className="workspace-panes">
             {/* 1. Whiteboard Pane */}
-            <div id="pane-sketch" className={`workspace-pane ${activeTab === 'sketch' ? 'active' : ''}`}>
+            <div id="pane-sketch" className={`workspace-pane ${activeTab === 'sketch' ? 'active' : ''}`} style={{ height: '100%', padding: 0 }}>
               {!isOwner && !projectPermissions.allowDraw && (
                 <div style={{ padding: '8px 16px', background: '#fee2e2', color: '#991b1b', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid #fca5a5' }}>
                   <Lock size={14} /> Drawing on the Sketch Board is currently disabled by the room owner.
                 </div>
               )}
-              <div className="whiteboard-canvas-wrapper" style={{ position: 'relative', pointerEvents: (!isOwner && !projectPermissions.allowDraw) ? 'none' : 'auto', opacity: (!isOwner && !projectPermissions.allowDraw) ? 0.7 : 1 }}>
-                {/* Floating Vertical Toolbar */}
-                <div className="whiteboard-vertical-toolbar" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className={`tool-btn ${drawingTool === 'select' ? 'active' : ''}`}
-                    onClick={() => { setDrawingTool('select'); setShowShapesPopover(false); setShowStylingPopover(false); }}
-                    title="Select & Move Shapes"
-                  >
-                    <MousePointer size={20} />
-                  </button>
-
-                  <button
-                    className={`tool-btn ${drawingTool === 'pen' ? 'active' : ''}`}
-                    onClick={() => { setDrawingTool('pen'); setShowShapesPopover(false); setShowStylingPopover(false); }}
-                    title="Draw Freehand"
-                    style={drawingTool === 'pen' ? { borderLeft: `3px solid ${brushColor}` } : {}}
-                  >
-                    <Pencil size={20} />
-                  </button>
-
-                  <button
-                    className={`tool-btn ${drawingTool === 'eraser' ? 'active' : ''}`}
-                    onClick={() => { setDrawingTool('eraser'); setShowShapesPopover(false); setShowStylingPopover(false); }}
-                    title="Erase Freehand Drawing"
-                  >
-                    <Eraser size={20} />
-                  </button>
-
-                  <div className="toolbar-divider" />
-
-                  {/* Shapes Trigger */}
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      className={`tool-btn ${showShapesPopover ? 'active' : ''}`}
-                      onClick={() => { setShowShapesPopover(!showShapesPopover); setShowStylingPopover(false); }}
-                      title="Insert Shapes"
-                    >
-                      <Shapes size={20} />
-                    </button>
-
-                    {showShapesPopover && (
-                      <div className="shapes-popover-card" onClick={(e) => e.stopPropagation()}>
-                        <div className="popover-header">
-                          <h4>Insert Shape</h4>
-                          <button className="popover-close-btn" onClick={() => setShowShapesPopover(false)}>
-                            <X size={14} />
-                          </button>
-                        </div>
-                        <div className="shapes-grid">
-                          <button
-                            onClick={() => { addRect(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Rectangle"
-                          >
-                            <Square size={20} />
-                            <span>Rectangle</span>
-                          </button>
-                          <button
-                            onClick={() => { addCircle(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Circle"
-                          >
-                            <CircleIcon size={20} />
-                            <span>Circle</span>
-                          </button>
-                          <button
-                            onClick={() => { addTriangle(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Triangle"
-                          >
-                            <TriangleIcon size={20} />
-                            <span>Triangle</span>
-                          </button>
-                          <button
-                            onClick={() => { addLine(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Line"
-                          >
-                            <Minus size={20} style={{ transform: 'rotate(-45deg)' }} />
-                            <span>Line</span>
-                          </button>
-                          <button
-                            onClick={() => { addDiamond(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Diamond"
-                          >
-                            <Diamond size={20} />
-                            <span>Diamond</span>
-                          </button>
-                          <button
-                            onClick={() => { addArrow(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Arrow"
-                          >
-                            <ArrowRight size={20} />
-                            <span>Arrow</span>
-                          </button>
-                          <button
-                            onClick={() => { addStar(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Star"
-                          >
-                            <Star size={20} />
-                            <span>Star</span>
-                          </button>
-                          <button
-                            onClick={() => { addHeart(); setShowShapesPopover(false); }}
-                            className="shape-select-btn"
-                            title="Heart"
-                          >
-                            <Heart size={20} />
-                            <span>Heart</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Styling Trigger */}
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      className={`tool-btn ${showStylingPopover ? 'active' : ''}`}
-                      onClick={() => { setShowStylingPopover(!showStylingPopover); setShowShapesPopover(false); }}
-                      title="Styling & Presets"
-                      style={{ borderLeft: `3px solid ${brushColor}` }}
-                    >
-                      <Palette size={20} />
-                    </button>
-
-                    {showStylingPopover && (
-                      <div className="styling-popover-card" onClick={(e) => e.stopPropagation()}>
-                        <div className="popover-header">
-                          <h4>Brush Styling</h4>
-                          <button className="popover-close-btn" onClick={() => setShowStylingPopover(false)}>
-                            <X size={14} />
-                          </button>
-                        </div>
-
-                        <div className="popover-section">
-                          <label>Presets</label>
-                          <div className="color-presets" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                            {['#A93F55', '#1e293b', '#2563eb', '#16a34a', '#d97706', '#9333ea'].map((color) => (
-                              <button
-                                key={color}
-                                className={`preset-color-btn ${brushColor.toLowerCase() === color.toLowerCase() ? 'selected' : ''}`}
-                                style={{ backgroundColor: color, width: '20px', height: '20px', borderRadius: '50%', border: 'none', cursor: 'pointer', transition: 'var(--transition)' }}
-                                onClick={() => setBrushColor(color)}
-                                title={`Select Color ${color}`}
-                              />
-                            ))}
-                            <div className="color-picker-wrapper" title="More Colors" style={{ position: 'relative', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <input
-                                type="color"
-                                value={brushColor}
-                                onChange={(e) => setBrushColor(e.target.value)}
-                                className="color-picker-input"
-                                style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
-                              />
-                              <Palette size={13} className="color-picker-icon" style={{ color: 'var(--text-color)' }} />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="popover-section">
-                          <label>Thickness ({brushWidth}px)</label>
-                          <div className="brush-presets" style={{ display: 'flex', gap: '8px' }}>
-                            {[2, 5, 10, 20].map((size) => (
-                              <button
-                                key={size}
-                                className={`brush-preset-btn ${brushWidth === size ? 'selected' : ''}`}
-                                onClick={() => setBrushWidth(size)}
-                                title={`Preset Width ${size}px`}
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}
-                              >
-                                <span
-                                  className="brush-dot"
-                                  style={{ display: 'block', borderRadius: '50%', background: 'var(--text-color)', width: `${Math.min(size + 2, 14)}px`, height: `${Math.min(size + 2, 14)}px` }}
-                                />
-                              </button>
-                            ))}
-                          </div>
-                          <div className="brush-slider-wrapper" style={{ marginTop: '8px' }}>
-                            <input
-                              type="range"
-                              min="1"
-                              max="30"
-                              value={brushWidth}
-                              onChange={(e) => setBrushWidth(parseInt(e.target.value))}
-                              className="brush-slider"
-                              title="Fine-tune brush width"
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="toolbar-divider" />
-
-                  {/* Actions */}
-                  <button onClick={deleteSelected} title="Delete Selected Shape" className="tool-btn text-danger">
-                    <Scissors size={20} />
-                  </button>
-
-                  <button onClick={clearWhiteboard} title="Clear Drawing Board" className="tool-btn text-danger">
-                    <Trash2 size={20} />
-                  </button>
-
-                  <button onClick={exportWhiteboard} title="Export Whiteboard JSON" className="tool-btn">
-                    <Download size={20} />
-                  </button>
-
-                  <label className="tool-btn" title="Import Whiteboard JSON" style={{ display: 'flex', cursor: 'pointer', margin: 0, justifyContent: 'center', alignItems: 'center' }}>
-                    <Upload size={20} />
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={importWhiteboard}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                </div>
-
-                {/* Floating History / Undo-Redo Toolbar */}
-                <div className="whiteboard-history-toolbar">
-                  <button onClick={handleUndo} title="Undo last action" className="action-btn">
-                    <Undo size={18} />
-                  </button>
-                  <button onClick={handleRedo} title="Redo last undone action" className="action-btn">
-                    <Redo size={18} />
-                  </button>
-                </div>
-
-                <div className="whiteboard-canvas-wrapper">
-                  <canvas ref={canvasRef} />
-                </div>
+              <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+                <WhiteboardCanvas
+                  roomName={projectName}
+                  socket={socketRef.current}
+                  currentUser={{ username, color: '#A93F55' }}
+                  readOnly={!isOwner && !projectPermissions.allowDraw}
+                  height="100%"
+                />
               </div>
             </div>
 
@@ -3740,65 +3701,66 @@ export default function ProjectRoom() {
               />
 
               {/* Attachments Panel */}
-              <div className="attachments-panel">
-                <div className="attachments-header">
-                  <h3 className="attachments-title">
-                    <FileText size={18} />
-                    <span>Project Attachments</span>
-                  </h3>
-                  <div className="attachments-actions">
-                    <label className="upload-btn-label">
-                      <span>Upload File</span>
-                      <input
-                        type="file"
-                        onChange={handleAttachmentUpload}
-                        style={{ display: 'none' }}
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"
-                      />
-                    </label>
+              {isFeatureVisible('project.attachments') && (
+                <div className="attachments-panel">
+                  <div className="attachments-header">
+                    <h3 className="attachments-title">
+                      <FileText size={18} />
+                      <span>Project Attachments</span>
+                    </h3>
+                    <div className="attachments-actions">
+                      <label className="upload-btn-label">
+                        <span>Upload File</span>
+                        <input
+                          type="file"
+                          onChange={handleAttachmentUpload}
+                          style={{ display: 'none' }}
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"
+                        />
+                      </label>
+                    </div>
                   </div>
-                </div>
 
-                {attachments.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>No files attached yet. Upload files to collaborate.</p>
-                ) : (
-                  <div className="attachments-list">
-                    {attachments.map((file, idx) => {
-                      const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name);
-                      const isPdf = /\.pdf$/i.test(file.name);
-                      return (
-                        <div key={idx} className="attachment-card">
-                          <div className="attachment-info">
-                            <div className="attachment-icon-wrapper">
-                              {isImage ? '🖼️' : isPdf ? '📄' : '📁'}
+                  {attachments.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>No files attached yet. Upload files to collaborate.</p>
+                  ) : (
+                    <div className="attachments-list">
+                      {attachments.map((file, idx) => {
+                        const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name);
+                        const isPdf = /\.pdf$/i.test(file.name);
+                        return (
+                          <div key={idx} className="attachment-card">
+                            <div className="attachment-info">
+                              <div className="attachment-icon-wrapper">
+                                {isImage ? '🖼️' : isPdf ? '📄' : '📁'}
+                              </div>
+                              <div className="attachment-details">
+                                <a
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="attachment-name"
+                                  title={file.name}
+                                >
+                                  {file.name}
+                                </a>
+                                <span className="attachment-meta">
+                                  {new Date(file.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
                             </div>
-                            <div className="attachment-details">
+                            <div className="attachment-buttons">
                               <a
                                 href={file.url}
+                                download={file.name}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="attachment-name"
-                                title={file.name}
+                                className="attachment-action-btn download-btn"
+                                title="Download File"
                               >
-                                {file.name}
+                                <Download size={14} />
+                                <span className="attachment-btn-text">Download</span>
                               </a>
-                              <span className="attachment-meta">
-                                {new Date(file.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="attachment-buttons">
-                            <a
-                              href={file.url}
-                              download={file.name}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="attachment-action-btn download-btn"
-                              title="Download File"
-                            >
-                              <Download size={14} />
-                              <span className="attachment-btn-text">Download</span>
-                            </a>
                             {(isOwner || file.uploader === username) && (
                               <button
                                 onClick={() => setDeleteConfirmFile(file)}
@@ -3816,7 +3778,8 @@ export default function ProjectRoom() {
                   </div>
                 )}
               </div>
-            </div>
+            )}
+          </div>
 
             {/* 3. Coding Board (Monaco) Pane */}
             <div id="pane-code" className={`workspace-pane ${activeTab === 'code' ? 'active' : ''} upgraded-ide-pane`}>
@@ -4390,7 +4353,7 @@ export default function ProjectRoom() {
                     ) : (
                       <div className="empty-editor-placeholder">
                         <div className="placeholder-content">
-                          <h3>AnonHub Collaborative IDE</h3>
+                          <h3>Trinetra Collaborative IDE</h3>
                           <p>Select or create a file from the explorer sidebar to begin editing.</p>
                           <div className="shortcut-guide">
                             <div><span>Ctrl + Shift + P</span> Command Palette</div>
@@ -4936,7 +4899,7 @@ export default function ProjectRoom() {
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No polls created yet.</p>
                   ) : (
                     polls.map(poll => {
-                      const hasVotedList = JSON.parse(localStorage.getItem(`anonhub_voted_polls_${projectName}`) || '[]');
+                      const hasVotedList = JSON.parse(localStorage.getItem(`trinetra_voted_polls_${projectName}`) || localStorage.getItem(`anonhub_voted_polls_${projectName}`) || '[]');
                       const hasVoted = hasVotedList.includes(poll.id);
                       const isExpired = Date.now() > poll.expiresAt;
                       const showResults = hasVoted || isExpired;
@@ -4985,6 +4948,7 @@ export default function ProjectRoom() {
                                         socketRef.current?.emit('update polls', { projectName, polls: JSON.stringify(updatedPolls) });
 
                                         const newVotedList = [...hasVotedList, poll.id];
+                                        localStorage.setItem(`trinetra_voted_polls_${projectName}`, JSON.stringify(newVotedList));
                                         localStorage.setItem(`anonhub_voted_polls_${projectName}`, JSON.stringify(newVotedList));
                                         addTimelineEvent(`Voted in poll: "${poll.question}"`);
                                       }}
@@ -5182,86 +5146,118 @@ export default function ProjectRoom() {
               </div>
             </div>
           </div>
+
+          {/* Bottom Floating Status Bar - Hidden on sketch tab to prevent collision with tldraw canvas controls */}
+          {activeTab !== 'sketch' && (
+            <div className="workspace-status-footer">
+              <div className="status-pill-left">
+                <span className="status-dot-green">●</span>
+                <span>Saved</span>
+                <span className="status-divider">|</span>
+                <span>Board: <strong>{activeTab === 'document' ? 'Document Board' : (activeTab === 'code' ? 'Coding Board' : (activeTab === 'notes' ? 'Smart Notes' : (activeTab === 'polls' ? 'Polls' : (activeTab === 'snippets' ? 'Snippets' : 'Timeline'))))}</strong></span>
+                <span className="status-divider">|</span>
+                <span>Members: <strong>{users.length || 1}</strong></span>
+              </div>
+
+              <div className="status-pill-right">
+                <button className="btn-pro-badge" onClick={() => setTourStep(0)} title="Take Workspace Tour">
+                  <Sparkles size={14} style={{ color: '#f59e0b' }} />
+                  <span>Quick Tour</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Workspace Chat & Users Panel */}
-        <aside className={`project-chat-container ${mobileChatOpen ? 'mobile-open' : ''}`}>
+        {/* 2. RIGHT COLLABORATION SIDEBAR */}
+        <aside className={`project-right-sidebar ${chatVisible ? '' : 'desktop-hidden'} ${mobileChatOpen ? 'mobile-open' : ''}`}>
           <div className="mobile-chat-close-bar">
-            <span>Project Chat & Roster</span>
+            <span>Project Workspace Panel</span>
             <button className="close-mobile-chat-btn" onClick={() => setMobileChatOpen(false)} title="Close Chat">
               <X size={18} />
             </button>
           </div>
-          {socketInstance && (
-            <WebRTCCallWidget projectName={projectName} socket={socketInstance} username={username} />
-          )}
-          <div className="panel-section">
-            <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
-              Project Chat
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: '#52c41a'
-                }}
-                title="Connected"
-              ></span>
-            </h4>
-            <ul ref={chatContainerRef} className="chat-messages" style={{ overflowY: 'auto' }}>
-              {chatMessages.map((msg, i) => {
-                const isSystem = msg.username === 'System';
-                return (
-                  <li key={i} className={isSystem ? 'system-message' : ''} style={{ listStyle: 'none' }}>
-                    {isSystem ? (
-                      <em style={{ color: 'var(--text-muted)' }}>{msg.msg}</em>
-                    ) : (
-                      <>
-                        <strong style={{ color: 'var(--primary-color)' }}>{msg.username}:</strong>{' '}
-                        <span>{msg.msg}</span>
-                      </>
-                    )}
-                  </li>
-                );
-              })}
+
+          {/* Quick Video Call Box */}
+          <div className="right-card video-quick-card">
+            <div className="video-card-top-pills">
+              <button
+                type="button"
+                className={`vpill ${micActive ? 'mic-on' : 'mic-off'}`}
+                onClick={() => setMicActive(v => !v)}
+              >
+                <Mic size={14} /> <span>{micActive ? 'Mic On' : 'Mic Off'}</span>
+              </button>
+              <button
+                type="button"
+                className={`vpill ${cameraActive ? 'cam-on' : 'cam-off'}`}
+                onClick={() => setCameraActive(v => !v)}
+              >
+                <Camera size={14} /> <span>{cameraActive ? 'Camera On' : 'Camera Off'}</span>
+              </button>
+            </div>
+            <button
+              className="btn-join-vcall"
+              onClick={() => navigate(`/call/${encodeURIComponent(projectName)}`)}
+            >
+              <Video size={16} /> <span>Join Video Call</span>
+            </button>
+            <button
+              className="btn-screenshare-only"
+              onClick={() => navigate(`/call/${encodeURIComponent(projectName)}?screenshare=true`)}
+            >
+              <Monitor size={15} /> <span>Screen Share Only</span>
+            </button>
+          </div>
+
+          {/* Project Chat Box */}
+          <div className="right-card chat-feed-card">
+            <div className="chat-card-header">
+              <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Project Chat <span className="chat-online-dot">●</span>
+              </h4>
+              <button className="chat-clear-btn" onClick={() => setChatMessages([])}>Clear</button>
+            </div>
+            <ul ref={chatContainerRef} className="chat-messages-stream">
+              {chatMessages.length === 0 ? (
+                <div className="empty-chat-hint">No messages yet. Say hi to your team! 👋</div>
+              ) : (
+                chatMessages.map((msg, i) => {
+                  const isSelf = msg.username === username;
+                  const isSystem = msg.username === 'System';
+                  return (
+                    <li key={i} className={`chat-stream-item ${isSelf ? 'own' : ''} ${isSystem ? 'system' : ''}`}>
+                      {!isSystem && (
+                        <div className="chat-sender-header">
+                          <span className="chat-user-name">
+                            {msg.username} {isSelf && '(You)'}
+                          </span>
+                        </div>
+                      )}
+                      <div className="chat-bubble-text">
+                        <ProjectChatMessageContent text={msg.msg} />
+                        <span className="chat-timestamp">{msg.time || '10:30 AM'}</span>
+                      </div>
+                    </li>
+                  );
+                })
+              )}
             </ul>
-            <form className="message-form" onSubmit={handleSendChat}>
+            <form className="chat-stream-input-form" onSubmit={handleSendChat}>
               <input
-                className="chat-form-control"
+                className="chat-stream-input"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Message..."
+                placeholder="Type a message..."
                 autoComplete="off"
               />
-              <button type="submit">
-                <Send size={12} />
+              <button type="submit" className="chat-stream-send-btn" disabled={!chatInput.trim()} title="Send Message">
+                <Send size={14} />
               </button>
             </form>
           </div>
-
-          <div className="panel-section" style={{ maxHeight: '250px' }}>
-            <h4 style={{ margin: 0, borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
-              Users in Project ({users.length})
-            </h4>
-            <ul className="user-list" style={{ marginTop: '10px', maxHeight: '150px', overflowY: 'auto' }}>
-              {users.map((u, i) => (
-                <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', padding: '4px 0' }}>
-                  <span
-                    style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      backgroundColor: '#52c41a'
-                    }}
-                  ></span>
-                  <span>{u.username} {u.username === username && '(You)'}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
         </aside>
-      </main>
+    </main>
 
       {deleteConfirmFile && (
         <div className="custom-confirm-overlay" style={{
@@ -5347,7 +5343,7 @@ export default function ProjectRoom() {
               className="tour-skip-btn"
               onClick={() => {
                 setTourStep(-1);
-                localStorage.setItem(standaloneMode ? `anonhub_standalone_${activeTab}_tour_seen` : 'anonhub_project_tour_seen', 'true');
+                localStorage.setItem(standaloneMode ? `trinetra_standalone_${activeTab}_tour_seen` : 'trinetra_project_tour_seen', 'true');
               }}
             >
               Skip
@@ -5359,7 +5355,7 @@ export default function ProjectRoom() {
                   setTourStep(prev => prev + 1);
                 } else {
                   setTourStep(-1);
-                  localStorage.setItem(standaloneMode ? `anonhub_standalone_${activeTab}_tour_seen` : 'anonhub_project_tour_seen', 'true');
+                  localStorage.setItem(standaloneMode ? `trinetra_standalone_${activeTab}_tour_seen` : 'trinetra_project_tour_seen', 'true');
                 }
               }}
             >
@@ -5475,6 +5471,76 @@ export default function ProjectRoom() {
               </div>
               {customOwnerKeyMsg && <p className={`owner-key-msg ${customOwnerKeyMsg.type}`} style={{ marginTop: '6px' }}>{customOwnerKeyMsg.text}</p>}
             </div>
+
+            {/* Danger Zone: Delete Room */}
+            <div style={{ marginTop: '16px', borderTop: '1px solid rgba(239, 68, 68, 0.3)', paddingTop: '14px' }}>
+              <h4 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertTriangle size={14} /> Danger Zone
+              </h4>
+              <p className="permissions-hint" style={{ marginBottom: '10px' }}>
+                Permanently delete this project and all associated files, messages, documents, code, and whiteboard data.
+              </p>
+              <button
+                className="btn-danger"
+                onClick={() => { setShowPermissionsModal(false); setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
+                style={{ width: '100%', padding: '8px 16px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              >
+                <Trash2 size={14} /> Delete Room Permanently
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Room Deletion Confirmation Modal (Owner) ────────────────────── */}
+      {showDeleteModal && createPortal(
+        <div className="chat-lightbox" onClick={() => !deletingRoom && setShowDeleteModal(false)}>
+          <div className="share-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', border: '1.5px solid #ef4444' }}>
+            <div className="share-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                <AlertTriangle size={18} /> Delete Room Permanently?
+              </h3>
+              <button onClick={() => !deletingRoom && setShowDeleteModal(false)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <p className="share-modal-subtitle" style={{ color: 'var(--text-color)', lineHeight: 1.6 }}>
+              All messages, files, documents, code, and whiteboard data associated with <strong>{projectName}</strong> will be permanently removed. This action <strong>cannot be undone</strong>.
+            </p>
+            <div style={{ margin: '14px 0' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                Please type <strong>{projectName}</strong> to confirm:
+              </label>
+              <input
+                type="text"
+                className="owner-key-input"
+                placeholder={projectName}
+                value={deleteConfirmText}
+                onChange={e => { setDeleteConfirmText(e.target.value); setDeleteError(''); }}
+                disabled={deletingRoom}
+                autoFocus
+                style={{ width: '100%', borderColor: '#ef4444' }}
+              />
+              {deleteError && <p className="owner-key-msg error" style={{ marginTop: '6px' }}>{deleteError}</p>}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                type="button"
+                className="tab-btn"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletingRoom}
+                style={{ padding: '8px 16px', borderRadius: '8px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteProjectRoom}
+                disabled={deletingRoom || deleteConfirmText.trim().toLowerCase() !== projectName.trim().toLowerCase()}
+                style={{ padding: '8px 18px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: (deletingRoom || deleteConfirmText.trim().toLowerCase() !== projectName.trim().toLowerCase()) ? 'not-allowed' : 'pointer', opacity: (deleteConfirmText.trim().toLowerCase() !== projectName.trim().toLowerCase()) ? 0.6 : 1 }}
+              >
+                {deletingRoom ? 'Deleting...' : 'Permanently Delete'}
+              </button>
+            </div>
           </div>
         </div>,
         document.body
@@ -5519,5 +5585,143 @@ export default function ProjectRoom() {
         document.body
       )}
     </div>
+  );
+}
+
+function ProjectChatImageMessage({ fullUrl, filename }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px', 
+          background: 'rgba(0,0,0,0.18)', 
+          padding: '6px 10px', 
+          borderRadius: '8px', 
+          marginTop: '4px', 
+          textDecoration: 'none', 
+          color: 'inherit',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}
+      >
+        <FileText size={16} style={{ color: 'var(--primary-color)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{filename}</span>
+          <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>IMAGE • Click to view / download</span>
+        </div>
+        <Download size={13} style={{ opacity: 0.8 }} />
+      </a>
+    );
+  }
+
+  return (
+    <div style={{ position: 'relative', marginTop: '4px' }}>
+      <img 
+        src={fullUrl} 
+        alt={filename} 
+        style={{ maxWidth: '100%', maxHeight: '160px', borderRadius: '6px', cursor: 'pointer', display: 'block', objectFit: 'cover' }} 
+        onClick={() => window.open(fullUrl, '_blank')}
+        onError={() => setHasError(true)}
+        loading="lazy"
+      />
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        title={`Download ${filename}`}
+        style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.6)', borderRadius: '4px', padding: '3px', color: '#fff', display: 'flex' }}
+      >
+        <Download size={12} />
+      </a>
+    </div>
+  );
+}
+
+/**
+ * Renders rich attachments, media, and links inside project chat messages.
+ */
+function ProjectChatMessageContent({ text }) {
+  if (!text) return null;
+  const trimmed = String(text).trim();
+
+  // 1. Audio / Voice Notes
+  if (trimmed.startsWith('data:audio') || /\.(mp3|wav|ogg|webm)($|\?)/i.test(trimmed)) {
+    return (
+      <div style={{ marginTop: '4px', maxWidth: '100%' }}>
+        <audio controls src={trimmed} style={{ maxWidth: '100%', height: '32px' }} />
+      </div>
+    );
+  }
+
+  // 2. Attachments & Images
+  const isAttachment = trimmed.includes('/api/attachments/') || trimmed.startsWith('/attachments/');
+  const isImage = (/\.(jpg|jpeg|png|gif|webp|svg)($|\?)/i.test(trimmed) || (isAttachment && /[?&]type=image/i.test(trimmed)));
+
+  if (isImage) {
+    const fullUrl = trimmed.startsWith('http') ? trimmed : getApiUrl(trimmed);
+    let filename = 'Image';
+    try {
+      const urlObj = new URL(fullUrl, window.location.origin);
+      filename = urlObj.searchParams.get('name') || 'image';
+    } catch(e) {}
+    return <ProjectChatImageMessage fullUrl={fullUrl} filename={filename} />;
+  }
+
+  if (isAttachment) {
+    const fullUrl = trimmed.startsWith('http') ? trimmed : getApiUrl(trimmed);
+    let filename = 'Attachment';
+    let fileType = 'File';
+    try {
+      const urlObj = new URL(fullUrl, window.location.origin);
+      filename = urlObj.searchParams.get('name') || urlObj.pathname.split('/').pop() || 'Attachment';
+      const rawType = urlObj.searchParams.get('type') || '';
+      fileType = rawType ? rawType.split('/').pop() : (filename.split('.').pop() || 'FILE');
+    } catch(e) {}
+    return (
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px', 
+          background: 'rgba(0,0,0,0.18)', 
+          padding: '6px 10px', 
+          borderRadius: '8px', 
+          marginTop: '4px', 
+          textDecoration: 'none', 
+          color: 'inherit',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}
+      >
+        <FileText size={16} style={{ color: 'var(--primary-color)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{filename}</span>
+          <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>{fileType.toUpperCase()} • Download</span>
+        </div>
+        <Download size={13} style={{ opacity: 0.8 }} />
+      </a>
+    );
+  }
+
+  // 3. Plain URLs
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = trimmed.split(urlRegex);
+  return (
+    <span>
+      {parts.map((part, idx) =>
+        urlRegex.test(part) ? (
+          <a key={idx} href={part} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--secondary-color, #61a5c2)', textDecoration: 'underline', wordBreak: 'break-all' }}>{part}</a>
+        ) : part
+      )}
+    </span>
   );
 }

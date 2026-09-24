@@ -1,6 +1,12 @@
 node_modules
 dist
+dist-ssr
 build
 coverage
-env
 .env
+.env.*
+!.env.example
+*.log
+.DS_Store
+*.local
+temp_code_*

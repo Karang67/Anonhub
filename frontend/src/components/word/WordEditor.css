@@ -1,0 +1,599 @@
+/**
+ * @file WordEditor.css
+ * @description Microsoft Word-style realistic paper page and ribbon styling for Trinetra.
+ */
+
+.trinetra-word-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--card-bg, #1a1a2e);
+  color: var(--text-color, #f3f4f6);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ─── Ribbon Bar Header ────────────────────────────────────────────────────── */
+
+.word-ribbon {
+  background: var(--card-hover-bg, #16162a);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.word-ribbon .ribbon-tabs-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  overflow-x: auto;
+}
+
+.word-ribbon .ribbon-brand-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-right: 12px;
+}
+
+.word-ribbon .ribbon-brand-tag .brand-icon {
+  color: #2563eb;
+}
+
+.word-ribbon .ribbon-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted, #9ca3af);
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.word-ribbon .ribbon-tab-btn:hover {
+  color: var(--text-color, #ffffff);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.word-ribbon .ribbon-tab-btn.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  background: var(--card-bg, #1a1a2e);
+  font-weight: 600;
+}
+
+.word-ribbon .ribbon-tab-btn.ai-tab {
+  color: #a855f7;
+}
+
+.word-ribbon .ribbon-tab-btn.ai-tab.active {
+  color: #c084fc;
+  border-bottom-color: #a855f7;
+}
+
+.word-ribbon .ribbon-save-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted, #9ca3af);
+  padding-right: 8px;
+}
+
+.word-ribbon .ribbon-collapse-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #9ca3af);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 4px;
+}
+
+.word-ribbon .ribbon-collapse-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-color, #ffffff);
+}
+
+/* ─── Ribbon Toolbars ──────────────────────────────────────────────────────── */
+
+.word-ribbon .ribbon-toolbar-body {
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  overflow-x: auto;
+}
+
+.tool-select {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  color: var(--text-color, #ffffff);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.tool-select.font-size-select {
+  width: 75px;
+}
+
+.layout-select-label {
+  font-size: 0.78rem;
+  color: var(--text-muted, #9ca3af);
+  margin-right: 4px;
+}
+
+/* ─── Document Workspace & Realistic Paper Page ────────────────────────────── */
+
+.word-workspace-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  background: #111122; /* Realistic slate-gray workspace */
+}
+
+.word-document-scroll-viewport {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 36px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* A4 Realistic Document Paper Page */
+.word-paper-page {
+  background: #ffffff !important; /* Real paper background */
+  color: #111827 !important; /* Dark readable ink text */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+/* Header Banner */
+.word-page-header-banner {
+  border-bottom: 1px dashed #d1d5db;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+.page-header-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #6b7280 !important;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.page-header-input:focus {
+  outline: none;
+  color: #111827 !important;
+}
+
+/* Editable Content Body */
+.word-editable-content {
+  flex: 1;
+  outline: none;
+  font-size: 11pt;
+  line-height: 1.6;
+  font-family: 'Calibri', 'Arial', sans-serif;
+  min-height: 800px;
+  color: #111827 !important;
+}
+
+.word-editable-content p,
+.word-editable-content span,
+.word-editable-content div,
+.word-editable-content li,
+.word-editable-content td,
+.word-editable-content th {
+  color: #111827 !important;
+}
+
+.word-editable-content p {
+  margin: 0 0 10pt 0;
+}
+
+.word-editable-content h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  color: #1e3a8a !important;
+  margin: 18pt 0 6pt 0;
+}
+
+.word-editable-content h2 {
+  font-size: 15pt;
+  font-weight: 600;
+  color: #1d4ed8 !important;
+  margin: 14pt 0 4pt 0;
+}
+
+.word-editable-content h3 {
+  font-size: 13pt;
+  font-weight: 600;
+  color: #2563eb !important;
+  margin: 10pt 0 4pt 0;
+}
+
+.word-editable-content ul,
+.word-editable-content ol {
+  margin: 0 0 10pt 24pt;
+  padding: 0;
+}
+
+.word-editable-content li {
+  margin-bottom: 3pt;
+}
+
+.word-editable-content blockquote {
+  border-left: 3px solid #3b82f6;
+  margin: 10pt 0;
+  padding: 4pt 12pt;
+  color: #4b5563;
+  font-style: italic;
+  background: #f8fafc;
+}
+
+/* Document Tables */
+.word-document-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12pt 0;
+}
+
+.word-document-table th,
+.word-document-table td {
+  border: 1px solid #94a3b8;
+  padding: 6pt 8pt;
+  text-align: left;
+  font-size: 10pt;
+}
+
+.word-document-table th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+/* Document Images */
+.word-document-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 2px;
+  display: inline-block;
+  margin: 8pt 0;
+}
+
+/* Page Break Divider */
+.word-page-break-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 24pt 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+/* Footer Banner */
+.word-page-footer-banner {
+  border-top: 1px dashed #d1d5db;
+  padding-top: 8px;
+  margin-top: 24pt;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-footer-input {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.page-footer-input:focus {
+  outline: none;
+  color: #111827;
+}
+
+.footer-page-num {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 500;
+  margin-left: 12px;
+}
+
+/* ─── Navigation Outline Sidebar ───────────────────────────────────────────── */
+
+.word-outline-sidebar {
+  width: 240px;
+  background: var(--card-bg, #1a1a2e);
+  border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+}
+
+.outline-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-color, #ffffff);
+}
+
+.outline-header button {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+}
+
+.outline-list {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.no-headings-text {
+  font-size: 0.78rem;
+  color: var(--text-muted, #9ca3af);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.outline-item {
+  text-decoration: none;
+  color: var(--text-color, #e5e7eb);
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-item:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--primary-color, #3b82f6);
+}
+
+.outline-item.h1 { font-weight: 600; padding-left: 6px; }
+.outline-item.h2 { padding-left: 16px; color: var(--text-muted, #9ca3af); }
+.outline-item.h3 { padding-left: 26px; font-size: 0.75rem; color: var(--text-muted, #9ca3af); }
+
+/* Table of Contents Container inside Document */
+.word-toc-container {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 12pt;
+  border-radius: 4px;
+  margin: 12pt 0;
+}
+
+.word-toc-container h3 {
+  margin-top: 0;
+  color: #1e3a8a;
+}
+
+.word-toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.word-toc-list li {
+  margin-bottom: 4pt;
+}
+
+.word-toc-list a {
+  text-decoration: none;
+  color: #2563eb;
+  font-size: 10pt;
+}
+
+.word-toc-list a:hover {
+  text-decoration: underline;
+}
+
+.word-toc-list .toc-h2 { padding-left: 12pt; }
+.word-toc-list .toc-h3 { padding-left: 24pt; }
+
+/* ─── Bottom Status Bar ────────────────────────────────────────────────────── */
+
+.word-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card-hover-bg, #16162a);
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  padding: 4px 12px;
+  font-size: 0.74rem;
+  color: var(--text-muted, #9ca3af);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.status-left, .status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-sep {
+  opacity: 0.4;
+}
+
+/* ─── Modals ───────────────────────────────────────────────────────────────── */
+
+.word-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.word-modal-card {
+  background: var(--card-bg, #1a1a2e);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 8px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.word-modal-card.ai-modal {
+  width: 480px;
+}
+
+/* ─── Print Stylesheet (Ctrl + P) ──────────────────────────────────────────── */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .word-paper-page,
+  .word-paper-page * {
+    visibility: visible;
+  }
+
+  .word-paper-page {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 20mm !important;
+  }
+
+  .word-ribbon,
+  .word-status-bar,
+  .word-outline-sidebar,
+  .office-header-bar,
+  .office-tabs-bar {
+    display: none !important;
+  }
+}
+
+/* ─── Mobile Responsiveness ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .word-document-scroll-viewport {
+    padding: 12px 6px;
+  }
+
+  .word-paper-page {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 16px 12px !important;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  }
+
+  .word-ribbon .ribbon-brand-tag {
+    display: none;
+  }
+
+  .word-ribbon-tabs-header {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .word-ribbon-tabs-header::-webkit-scrollbar {
+    display: none;
+  }
+
+  .word-ribbon .ribbon-tab-btn {
+    padding: 5px 8px;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .word-ribbon-group-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    padding: 6px 8px;
+  }
+  .word-ribbon-group-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .word-ribbon-group {
+    flex-shrink: 0;
+  }
+
+  .word-stats-bar {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .word-paper-page {
+    padding: 12px 8px !important;
+  }
+}

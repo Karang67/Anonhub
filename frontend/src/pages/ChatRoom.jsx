@@ -15,11 +15,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall, Shield, Key, Paperclip, Upload } from 'lucide-react';
+import { Users, Send, X, Edit2, Trash2, Link, Check, Copy, Pencil, PhoneCall, Shield, Key, Paperclip, Upload, AlertTriangle, FileText, Download, LogOut, Share2, Sparkles, KeyRound, CheckSquare } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getApiUrl } from '../config';
 import { initSocket, getCookie } from '../services/socket';
 import { globalCallSession } from '../services/callSession';
+import { deleteRoom } from '../services/api';
+import { useFeatureAccess } from '../context/FeatureAccessContext';
 import AccessKeyModal from '../components/AccessKeyModal';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
 import './ChatRoom.css';
@@ -27,26 +29,124 @@ import './ChatRoom.css';
 // ─── Image URL detection ─────────────────────────────────────────────────────
 const IMAGE_URL_REGEX = /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i;
 
-/**
- * Renders a single message's text content, auto-detecting image URLs.
- */
-function MessageContent({ text, onImageClick }) {
-  if (IMAGE_URL_REGEX.test(text.trim())) {
+function ChatImageMessage({ fullUrl, filename, onImageClick }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
     return (
-      <img
-        src={text.trim()}
-        alt="Shared image"
-        className="chat-inline-image"
-        onClick={() => onImageClick(text.trim())}
-        onError={(e) => {
-          // Fallback: show as plain text link if image fails to load
-          e.target.style.display = 'none';
-          e.target.nextSibling && (e.target.nextSibling.style.display = 'inline');
-        }}
-      />
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="chat-attachment-card"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="chat-attachment-icon-box">
+          <FileText size={18} />
+        </div>
+        <div className="chat-attachment-info">
+          <span className="chat-attachment-filename" title={filename}>{filename}</span>
+          <span className="chat-attachment-meta">IMAGE • Click to view / download</span>
+        </div>
+        <div className="chat-attachment-download-btn">
+          <Download size={15} />
+        </div>
+      </a>
     );
   }
-  // Detect plain URLs and render as links
+
+  return (
+    <div className="chat-attachment-image-wrap">
+      <img
+        src={fullUrl}
+        alt={filename}
+        className="chat-inline-image"
+        onClick={() => onImageClick && onImageClick(fullUrl)}
+        onError={() => setHasError(true)}
+        loading="lazy"
+      />
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        className="chat-img-download-overlay" 
+        title={`Download ${filename}`}
+        onClick={e => e.stopPropagation()}
+      >
+        <Download size={14} />
+      </a>
+    </div>
+  );
+}
+
+/**
+ * Renders a single message's text content, auto-detecting attachments, images, and URLs.
+ */
+function MessageContent({ text, onImageClick }) {
+  if (!text) return null;
+  const trimmed = text.trim();
+
+  // 1. Check for Audio / Voice Notes
+  if (trimmed.startsWith('data:audio') || /\.(mp3|wav|ogg|webm)($|\?)/i.test(trimmed)) {
+    return (
+      <div className="chat-voice-note-card" style={{ marginTop: '4px', maxWidth: '100%' }}>
+        <audio controls src={trimmed} style={{ maxWidth: '100%', height: '36px' }} />
+      </div>
+    );
+  }
+
+  // 2. Check if the message is an attachment or image URL
+  const isAttachment = trimmed.includes('/api/attachments/') || trimmed.startsWith('/attachments/');
+  const isDirectImage = IMAGE_URL_REGEX.test(trimmed) || (isAttachment && (/\.(jpg|jpeg|png|gif|webp|svg)($|\?)/i.test(trimmed) || /[?&]type=image/i.test(trimmed)));
+
+  // If it is an image
+  if (isDirectImage) {
+    const fullUrl = trimmed.startsWith('http') ? trimmed : getApiUrl(trimmed);
+    let filename = 'Image';
+    try {
+      const urlObj = new URL(fullUrl, window.location.origin);
+      filename = urlObj.searchParams.get('name') || 'image';
+    } catch(e) {}
+
+    return <ChatImageMessage fullUrl={fullUrl} filename={filename} onImageClick={onImageClick} />;
+  }
+
+  // 3. If it's a non-image attachment (PDF, DOCX, ZIP, or /api/attachments/:id)
+  if (isAttachment) {
+    const fullUrl = trimmed.startsWith('http') ? trimmed : getApiUrl(trimmed);
+    let filename = 'Attachment';
+    let fileType = 'File';
+    try {
+      const urlObj = new URL(fullUrl, window.location.origin);
+      filename = urlObj.searchParams.get('name') || urlObj.pathname.split('/').pop() || 'Attachment';
+      const rawType = urlObj.searchParams.get('type') || '';
+      fileType = rawType ? rawType.split('/').pop() : (filename.split('.').pop() || 'FILE');
+    } catch(e) {}
+
+    return (
+      <a 
+        href={fullUrl} 
+        download={filename} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="chat-attachment-card"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="chat-attachment-icon-box">
+          <FileText size={18} />
+        </div>
+        <div className="chat-attachment-info">
+          <span className="chat-attachment-filename" title={filename}>{filename}</span>
+          <span className="chat-attachment-meta">{fileType.toUpperCase()} • Click to download</span>
+        </div>
+        <div className="chat-attachment-download-btn">
+          <Download size={15} />
+        </div>
+      </a>
+    );
+  }
+
+  // 4. Standard text with URL detection
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return (
@@ -148,6 +248,7 @@ function ImageLightbox({ src, onClose }) {
 export default function ChatRoom() {
   const { roomName } = useParams();
   const navigate = useNavigate();
+  const { isFeatureVisible, can } = useFeatureAccess();
 
   // Real-time synchronization states
   const [messages, setMessages] = useState([]);
@@ -185,6 +286,12 @@ export default function ChatRoom() {
   const [claimingOwnership, setClaimingOwnership] = useState(false);
   const [newCustomOwnerKey, setNewCustomOwnerKey] = useState('');
   const [customOwnerKeyMsg, setCustomOwnerKeyMsg] = useState(null);
+
+  // ── Room Delete state ─────────────────────────────────────────────────────
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingRoom, setDeletingRoom] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // ── File Upload ──────────────────────────────────────────────────────────
   const [uploading, setUploading] = useState(false);
@@ -238,16 +345,21 @@ export default function ChatRoom() {
   // Onboarding walkthrough tour logic
   useEffect(() => {
     const handleStartTour = () => setTourStep(0);
+    window.addEventListener('start-trinetra-tour', handleStartTour);
     window.addEventListener('start-anonhub-tour', handleStartTour);
-    const hasSeenTour = localStorage.getItem('anonhub_chat_tour_seen');
+    const hasSeenTour = localStorage.getItem('trinetra_chat_tour_seen') || localStorage.getItem('anonhub_chat_tour_seen');
     if (!hasSeenTour) {
       const t = setTimeout(() => setTourStep(0), 1500);
       return () => {
         clearTimeout(t);
+        window.removeEventListener('start-trinetra-tour', handleStartTour);
         window.removeEventListener('start-anonhub-tour', handleStartTour);
       };
     }
-    return () => window.removeEventListener('start-anonhub-tour', handleStartTour);
+    return () => {
+      window.removeEventListener('start-trinetra-tour', handleStartTour);
+      window.removeEventListener('start-anonhub-tour', handleStartTour);
+    };
   }, []);
 
   // Lock body scroll for chat room page
@@ -288,7 +400,9 @@ export default function ChatRoom() {
       setNicknameInput(name);
       // Use a session cookie (no max-age) so the name persists across page
       // navigations within the same browser session but resets when the browser closes.
+      document.cookie = `trinetra-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('trinetra-username', name);
       sessionStorage.setItem('anonhub-username', name);
       if (socketRef.current) {
         socketRef.current.auth = { ...socketRef.current.auth, username: name };
@@ -299,7 +413,9 @@ export default function ChatRoom() {
     socket.on('username updated', (name) => {
       setUsername(name);
       setNicknameInput(name);
+      document.cookie = `trinetra-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
       document.cookie = `anonhub-username=${encodeURIComponent(name)}; path=/; SameSite=Lax`;
+      sessionStorage.setItem('trinetra-username', name);
       sessionStorage.setItem('anonhub-username', name);
       if (socketRef.current) {
         socketRef.current.auth = { ...socketRef.current.auth, username: name };
@@ -314,6 +430,11 @@ export default function ChatRoom() {
     socket.on('join success', () => {
       setShowOverlay(false);
       setOverlayError('');
+    });
+
+    socket.on('room deleted', ({ room, message }) => {
+      alert(message || 'This chat room has been permanently deleted by the owner.');
+      navigate('/');
     });
 
     socket.on('set owner token', (token) => {
@@ -539,6 +660,33 @@ export default function ChatRoom() {
     socketRef.current?.emit('set owner key', { room: roomName, newOwnerKey: key });
   };
 
+  const handleDeleteChatRoom = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) {
+      setDeleteError(`Please type "${roomName}" exactly to confirm.`);
+      return;
+    }
+    const ownerToken = localStorage.getItem(`owner_token_chat_${roomName}`)
+      || localStorage.getItem(`owner_token_chat_${roomName.toLowerCase()}`)
+      || localStorage.getItem(`owner_token_${roomName}`)
+      || localStorage.getItem(`owner_token_${roomName.toLowerCase()}`);
+    if (!ownerToken) {
+      setDeleteError('Owner token not found in this browser session.');
+      return;
+    }
+    setDeletingRoom(true);
+    setDeleteError('');
+    try {
+      await deleteRoom('chat', roomName, ownerToken);
+      localStorage.removeItem(`owner_token_chat_${roomName}`);
+      localStorage.removeItem(`owner_token_${roomName}`);
+      setShowDeleteModal(false);
+      navigate('/');
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete room.');
+      setDeletingRoom(false);
+    }
+  };
+
   // ── File Upload ─────────────────────────────────────────────────────────
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -549,15 +697,22 @@ export default function ChatRoom() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('room', roomName);
       const res = await fetch(getApiUrl('/upload'), { method: 'POST', body: formData });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Upload failed');
       }
-      const { location } = await res.json();
-      // Post the file URL as a chat message — images auto-preview, other files show as link
+      const data = await res.json();
+      const location = data.location;
+      const filename = data.filename || file.name;
+      const contentType = data.contentType || file.type;
+
+      // Preserve filename & type in query parameter for rich preview across all clients
+      const fileUrl = `${getApiUrl(location)}?name=${encodeURIComponent(filename)}&type=${encodeURIComponent(contentType)}`;
+
       if (location && socketRef.current) {
-        socketRef.current.emit('room message', { room: roomName, msg: getApiUrl(location) });
+        socketRef.current.emit('room message', { room: roomName, msg: fileUrl });
       }
     } catch (err) {
       alert(`Upload failed: ${err.message}`);
@@ -588,6 +743,34 @@ export default function ChatRoom() {
       socketRef.current?.emit('remove reaction', { room: roomName, messageId, emoji });
     } else {
       socketRef.current?.emit('add reaction', { room: roomName, messageId, emoji });
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    if (window.confirm(`Are you sure you want to leave chat room "${roomName}"?`)) {
+      socketRef.current?.emit('leave room', { room: roomName });
+      sessionStorage.removeItem(`accesskey_chat_${roomName}`);
+      sessionStorage.removeItem(`accesskey_chat_${roomName.toLowerCase()}`);
+      sessionStorage.removeItem('trinetra-active-chat-room');
+      sessionStorage.removeItem('anonhub-active-chat-room');
+      navigate('/chat');
+    }
+  };
+
+  const handleCloseSession = () => {
+    if (window.confirm(`Close active session for "${roomName}"?\n\nThis will clear your saved room access key and disconnect you from the active chat so you can re-enter with a different key or account.`)) {
+      if (socketRef.current) {
+        socketRef.current.emit('leave room', { room: roomName });
+      }
+      sessionStorage.removeItem(`accesskey_chat_${roomName}`);
+      sessionStorage.removeItem(`accesskey_chat_${roomName.toLowerCase()}`);
+      sessionStorage.removeItem('trinetra-active-chat-room');
+      sessionStorage.removeItem('anonhub-active-chat-room');
+      accessKeyRef.current = '';
+      setMessages([]);
+      setUsers([]);
+      setOverlayError('');
+      setShowOverlay(true);
     }
   };
 
@@ -663,52 +846,74 @@ export default function ChatRoom() {
               {/* Share button */}
               <button
                 id="chat-share-btn"
-                className="workspace-tour-trigger-btn"
+                className="chat-header-btn chat-header-btn-share"
                 onClick={() => setShowShareModal(true)}
-                title="Share invite link"
-                style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px' }}
+                title="Share invite link and QR code"
+                aria-label="Share chat room"
               >
-                <Link size={12} style={{ marginRight: '4px' }} />
-                Share
+                <Share2 size={13} className="chat-btn-icon" />
+                <span className="btn-label-text">Share</span>
               </button>
 
+              {/* Guided Tour */}
               <button
                 onClick={() => setTourStep(0)}
-                className="workspace-tour-trigger-btn"
-                title="Start Chat Tour"
-                style={{ padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px' }}
+                className="chat-header-btn chat-header-btn-tour"
+                title="Start interactive guided tour"
+                aria-label="Start Tour"
               >
-                ❓ Tour
+                <Sparkles size={13} className="chat-btn-icon" />
+                <span className="btn-label-text">Tour</span>
               </button>
 
+              {/* Multi-select Mode (Owner or user delete allowed) */}
               {(isOwner || roomPermissions.allowUserDelete) && (
                 <button
                   onClick={() => { setIsMultiSelectMode(prev => !prev); setSelectedMessageIds([]); }}
-                  className="workspace-tour-trigger-btn"
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: '0.75rem',
-                    borderRadius: '4px',
-                    backgroundColor: isMultiSelectMode ? 'var(--primary-color)' : 'var(--light-color)',
-                    color: isMultiSelectMode ? 'white' : 'var(--text-color)',
-                    border: '1px solid var(--border-color)',
-                    cursor: 'pointer'
-                  }}
+                  className={`chat-header-btn chat-header-btn-select ${isMultiSelectMode ? 'active' : ''}`}
+                  title={isMultiSelectMode ? 'Cancel multi-select' : 'Select messages to delete'}
+                  aria-label="Toggle select mode"
                 >
-                  {isMultiSelectMode ? 'Cancel' : 'Select'}
+                  <CheckSquare size={13} className="chat-btn-icon" />
+                  <span className="btn-label-text">{isMultiSelectMode ? 'Cancel' : 'Select'}</span>
                 </button>
               )}
 
+              {/* Session Close Button (Clear saved key & session to enter differently) */}
+              <button
+                onClick={handleCloseSession}
+                className="chat-header-btn chat-header-btn-session"
+                title="Close active session and clear saved access key to re-enter differently"
+                aria-label="Close session"
+              >
+                <KeyRound size={13} className="chat-btn-icon" />
+                <span className="btn-label-text">Close Session</span>
+              </button>
+
+              {/* Exit Room */}
+              <button
+                onClick={handleLeaveRoom}
+                className="chat-header-btn chat-header-btn-exit"
+                title="Exit chat room and return to lobby"
+                aria-label="Exit room"
+              >
+                <LogOut size={13} className="chat-btn-icon" />
+                <span className="btn-label-text">Exit</span>
+              </button>
+
+              {/* Users & Call Panel Toggle */}
               <button
                 id="sidebar-toggle"
-                className="mobile-only-btn"
+                className="chat-header-btn chat-header-btn-users"
                 onClick={() => setMobileSidebarOpen(prev => !prev)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                title="Toggle users and call panel"
+                aria-label="Toggle users and call"
               >
-                <Users size={14} />
-                <span style={{ opacity: 0.5 }}>|</span>
-                <PhoneCall size={14} />
-                <span>Users & Call ({users.length})</span>
+                <Users size={13} className="chat-btn-icon" />
+                <span className="chat-users-count-badge">{users.length}</span>
+                <span className="chat-btn-divider">|</span>
+                <PhoneCall size={12} className="chat-btn-icon" />
+                <span className="btn-label-text">Users & Call</span>
               </button>
             </div>
           </div>
@@ -804,7 +1009,7 @@ export default function ChatRoom() {
                     <span className="bubble-time">{formatTime(msg.timestamp)}</span>
 
                     {/* Emoji reactions display */}
-                    {reactions.length > 0 && (
+                    {isFeatureVisible('chat.reactions') && reactions.length > 0 && (
                       <div className="reaction-badges-row">
                         {reactions.map(r => (
                           <button
@@ -820,7 +1025,7 @@ export default function ChatRoom() {
                     )}
 
                     {/* Emoji reaction picker row (hover) */}
-                    {!isEditing && !isMultiSelectMode && msg._id && (
+                    {isFeatureVisible('chat.reactions') && can('chat.reactions', 'CREATE') && !isEditing && !isMultiSelectMode && msg._id && (
                       <div className="reaction-picker-row">
                         {EMOJIS.map(emoji => (
                           <button
@@ -841,9 +1046,11 @@ export default function ChatRoom() {
           </ul>
 
           {/* Real-time typing alerts */}
-          <div className="typing-indicator">
-            {typingUser && <span>💬 {typingUser}</span>}
-          </div>
+          {isFeatureVisible('chat.typing_indicator') && (
+            <div className="typing-indicator">
+              {typingUser && <span>💬 {typingUser}</span>}
+            </div>
+          )}
 
           {/* Message Dispatch form / Bulk actions bar */}
           {isMultiSelectMode ? (
@@ -866,7 +1073,7 @@ export default function ChatRoom() {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : isFeatureVisible('chat.messaging') && can('chat.messaging', 'CREATE') ? (
             <form className="message-form" onSubmit={handleSendMessage}>
               {/* Hidden file input */}
               <input
@@ -877,7 +1084,7 @@ export default function ChatRoom() {
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.zip"
               />
               {/* File upload button — shown when owner allows uploads OR user is owner */}
-              {(isOwner || roomPermissions.allowUserUpload) && (
+              {isFeatureVisible('chat.file_upload') && can('chat.file_upload', 'CREATE') && (isOwner || roomPermissions.allowUserUpload) && (
                 <button
                   type="button"
                   className="upload-btn"
@@ -902,6 +1109,10 @@ export default function ChatRoom() {
                 <Send size={14} />
               </button>
             </form>
+          ) : (
+            <div style={{ padding: '14px 20px', textAlign: 'center', background: 'var(--card-bg)', borderTop: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
+              🔒 Text messaging is disabled by administrator.
+            </div>
           )}
         </div>
 
@@ -1009,6 +1220,23 @@ export default function ChatRoom() {
                     </div>
                     {customOwnerKeyMsg && <p className={`owner-key-msg ${customOwnerKeyMsg.type}`} style={{ marginTop: '6px' }}>{customOwnerKeyMsg.text}</p>}
                   </div>
+
+                  {/* Danger Zone */}
+                  <div style={{ marginTop: '14px', borderTop: '1px solid rgba(239, 68, 68, 0.3)', paddingTop: '10px' }}>
+                    <p className="permissions-hint" style={{ fontWeight: 700, color: '#ef4444', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <AlertTriangle size={12} /> Danger Zone
+                    </p>
+                    <p className="permissions-hint" style={{ marginBottom: '8px' }}>
+                      Permanently delete this chat room and all messages.
+                    </p>
+                    <button
+                      className="btn-danger"
+                      onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError(''); }}
+                      style={{ width: '100%', padding: '6px 12px', borderRadius: '6px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <Trash2 size={12} /> Delete Room
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1084,20 +1312,72 @@ export default function ChatRoom() {
             <span className="tour-tooltip-badge">Step {tourStep + 1} of 5</span>
           </div>
           <div className="tour-tooltip-body">
-            {tourStep === 0 && <p>Welcome to the <strong>Secure Chat Room</strong>! This is an encrypted real-time chat space built for private discussion rooms.</p>}
-            {tourStep === 1 && <p>Click the <strong>✏️ nickname button</strong> next to your name in the header to set a custom display name.</p>}
-            {tourStep === 2 && <p>This is the <strong>Message Feed</strong>. Messages support inline image preview — paste an image URL and it renders inline.</p>}
-            {tourStep === 3 && <p>Type your message in the <strong>Message Input</strong> bar. You can also react to messages with emoji by hovering over any bubble.</p>}
-            {tourStep === 4 && <p>The <strong>🔗 Share button</strong> generates a QR code and invite URL you can send to collaborators.</p>}
+            {tourStep === 0 && <p>Welcome to the <strong>Secure Chat Room</strong>! Enjoy real-time, private group messaging with no registration and full anonymity.</p>}
+            {tourStep === 1 && <p>Click the <strong>✏️ Nickname</strong> button in the header to set your custom display name, and view active collaborators in the user roster.</p>}
+            {tourStep === 2 && <p>The <strong>Message Feed</strong> supports rich media: inline image rendering, file uploads, and recorded <strong>Voice Notes</strong>.</p>}
+            {tourStep === 3 && <p>Hover over any message to add <strong>Emoji Reactions</strong>, reply directly in thread, or pin important notices to the top bar.</p>}
+            {tourStep === 4 && <p>Use <strong>🔗 Share Room</strong> to copy invite links or QR codes, or click the <strong>📹 Video Call</strong> button to jump into a live meeting with your team!</p>}
           </div>
           <div className="tour-tooltip-footer">
-            <button className="tour-skip-btn" onClick={() => { setTourStep(-1); localStorage.setItem('anonhub_chat_tour_seen', 'true'); }}>Skip</button>
+            <button className="tour-skip-btn" onClick={() => { setTourStep(-1); localStorage.setItem('trinetra_chat_tour_seen', 'true'); }}>Skip</button>
             <button className="tour-next-btn" onClick={() => {
               if (tourStep < 4) setTourStep(prev => prev + 1);
-              else { setTourStep(-1); localStorage.setItem('anonhub_chat_tour_seen', 'true'); }
+              else { setTourStep(-1); localStorage.setItem('trinetra_chat_tour_seen', 'true'); }
             }}>
               {tourStep === 4 ? 'Finish' : 'Next'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Room Deletion Confirmation Modal ────────────────────────────── */}
+      {showDeleteModal && (
+        <div className="chat-lightbox" onClick={() => !deletingRoom && setShowDeleteModal(false)}>
+          <div className="share-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', border: '1.5px solid #ef4444' }}>
+            <div className="share-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                <AlertTriangle size={18} /> Delete Room Permanently?
+              </h3>
+              <button onClick={() => !deletingRoom && setShowDeleteModal(false)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <p className="share-modal-subtitle" style={{ color: 'var(--text-color)', lineHeight: 1.6 }}>
+              All messages and files associated with <strong>{roomName}</strong> will be permanently removed. This action <strong>cannot be undone</strong>.
+            </p>
+            <div style={{ margin: '14px 0' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                Please type <strong>{roomName}</strong> to confirm:
+              </label>
+              <input
+                type="text"
+                className="owner-key-input"
+                placeholder={roomName}
+                value={deleteConfirmText}
+                onChange={e => { setDeleteConfirmText(e.target.value); setDeleteError(''); }}
+                disabled={deletingRoom}
+                autoFocus
+                style={{ width: '100%', borderColor: '#ef4444' }}
+              />
+              {deleteError && <p className="owner-key-msg error" style={{ marginTop: '6px' }}>{deleteError}</p>}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                type="button"
+                className="tab-btn"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deletingRoom}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteChatRoom}
+                disabled={deletingRoom || deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()}
+                style={{ padding: '8px 18px', borderRadius: '8px', background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600, cursor: (deletingRoom || deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) ? 'not-allowed' : 'pointer', opacity: (deleteConfirmText.trim().toLowerCase() !== roomName.trim().toLowerCase()) ? 0.6 : 1 }}
+              >
+                {deletingRoom ? 'Deleting...' : 'Permanently Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -55,3 +55,35 @@
 .faq-item.active .faq-icon {
   transform: rotate(180deg);
 }
+
+@media (max-width: 768px) {
+  .faq-header {
+    padding: 14px 18px;
+    font-size: 1rem;
+  }
+
+  .faq-content {
+    padding: 0 18px;
+    font-size: 0.92rem;
+  }
+
+  .faq-item.active .faq-content {
+    padding: 14px 18px 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .faq-header {
+    padding: 12px 14px;
+    font-size: 0.95rem;
+  }
+
+  .faq-content {
+    padding: 0 14px;
+    font-size: 0.88rem;
+  }
+
+  .faq-item.active .faq-content {
+    padding: 10px 14px 16px;
+  }
+}

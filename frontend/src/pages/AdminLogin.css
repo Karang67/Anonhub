@@ -65,3 +65,34 @@
   opacity: 0.7;
   cursor: not-allowed;
 }
+
+@media (max-width: 480px) {
+  .admin-login-page {
+    padding: 16px 12px;
+    min-height: 60vh;
+  }
+
+  .admin-login-card {
+    padding: 24px 18px;
+    border-radius: 16px;
+  }
+
+  .admin-login-card h2 {
+    font-size: 1.35rem;
+  }
+
+  .admin-login-subtitle {
+    font-size: 0.88rem;
+    margin-bottom: 18px;
+  }
+
+  .admin-login-form input {
+    padding: 12px 14px;
+    font-size: 0.92rem;
+  }
+
+  .admin-login-button {
+    padding: 12px 14px;
+    font-size: 0.95rem;
+  }
+}

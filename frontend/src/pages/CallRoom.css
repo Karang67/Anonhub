@@ -10,8 +10,9 @@
     "ctrl   sidebar";
   grid-template-columns: 1fr 320px;
   grid-template-rows: 56px 1fr 72px;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  height: 100dvh;
   background: #04050a;
   color: #e2e8f0;
   font-family: var(--font-main, 'Outfit', 'Inter', system-ui, sans-serif);
@@ -662,8 +663,9 @@
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100dvh !important;
     z-index: 999999 !important;
     background: #080910 !important;
     display: flex !important;

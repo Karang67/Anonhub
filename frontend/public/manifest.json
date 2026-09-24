@@ -1,6 +1,6 @@
 {
-  "name": "AnonHub - Anonymous Collaboration",
-  "short_name": "AnonHub",
+  "name": "Trinetra - Anonymous Collaboration",
+  "short_name": "Trinetra",
   "description": "Real-time anonymous collaboration platform for chats, projects, documents, and code.",
   "start_url": "/",
   "display": "standalone",

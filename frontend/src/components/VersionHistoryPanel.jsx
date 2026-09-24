@@ -28,7 +28,7 @@ function formatAbsoluteTime(dateStr) {
   });
 }
 
-export default function VersionHistoryPanel({ projectName, type, socket, isOwner, onClose }) {
+export default function VersionHistoryPanel({ projectName, type, socket, isOwner, ownerToken, onClose }) {
   const [versions, setVersions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [restoring, setRestoring] = useState(null);
@@ -105,12 +105,26 @@ export default function VersionHistoryPanel({ projectName, type, socket, isOwner
   };
 
   const handleDelete = async (versionId) => {
+    if (!isOwner) {
+      alert('Only the project owner can delete version snapshots.');
+      return;
+    }
+    if (!ownerToken) {
+      alert('Owner token not found. Please rejoin the room as the owner.');
+      return;
+    }
     if (!window.confirm('Permanently delete this version snapshot?')) return;
     try {
       const res = await fetch(getApiUrl(`/api/versions/${versionId}`), {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerToken })
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to delete version.');
+        return;
+      }
       setMessage('✅ Version deleted successfully.');
       setTimeout(() => setMessage(''), 3000);
       fetchVersions();
@@ -189,13 +203,15 @@ export default function VersionHistoryPanel({ projectName, type, socket, isOwner
                       {restoring === v._id ? '...' : <RotateCcw size={12} />}
                     </button>
                   )}
-                  <button
-                    className="version-delete-btn"
-                    onClick={() => handleDelete(v._id)}
-                    title="Delete this version snapshot"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                  {isOwner && (
+                    <button
+                      className="version-delete-btn"
+                      onClick={() => handleDelete(v._id)}
+                      title="Delete this version snapshot (owner only)"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

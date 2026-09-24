@@ -11,10 +11,12 @@
 
 .admin-feedback-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--card-background);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
+  max-width: 100%;
 }
 
 .admin-feedback-table {

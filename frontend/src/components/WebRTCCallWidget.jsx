@@ -39,6 +39,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Video, VideoOff, Mic, MicOff, Tv, PhoneOff, PhoneCall, RefreshCw, Info, Maximize2, Minimize2 } from 'lucide-react';
 import { globalCallSession } from '../services/callSession';
+import { useFeatureAccess } from '../context/FeatureAccessContext';
 import './WebRTCCallWidget.css';
 
 // WEBRTC_DEPRECATED
@@ -641,6 +642,7 @@ class MoQSession {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function WebRTCCallWidget({ projectName, socket, username }) {
+  const { isFeatureVisible, can } = useFeatureAccess();
   const [inCall, setInCall] = useState(globalCallSession.isSessionActive(projectName));
   const inCallRef = useRef(globalCallSession.isSessionActive(projectName));
   const [micMuted, setMicMuted] = useState(false);
@@ -1165,29 +1167,39 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               {micMuted ? 'Mic Muted' : 'Mic On'}
             </button>
 
-            <button
-              onClick={toggleVideoPrejoin}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: videoMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: videoMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${videoMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
-              title={videoMuted ? 'Turn Camera On' : 'Turn Camera Off'}
-            >
-              {videoMuted ? <VideoOff size={15} /> : <Video size={15} />}
-              {videoMuted ? 'Camera Off' : 'Camera On'}
-            </button>
+            {/* Prejoin Camera Toggle */}
+            {isFeatureVisible('chat.video_call') && isFeatureVisible('call.video') && (
+              <button
+                onClick={toggleVideoPrejoin}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: videoMuted ? 'rgba(239,68,68,0.2)' : 'rgba(124,77,255,0.15)', color: videoMuted ? '#ef4444' : '#c5b3ff', borderRadius: '8px', fontWeight: 600, border: `1px solid ${videoMuted ? 'rgba(239,68,68,0.4)' : 'rgba(124,77,255,0.3)'}`, cursor: 'pointer', fontSize: '0.82rem' }}
+                title={videoMuted ? 'Turn Camera On' : 'Turn Camera Off'}
+              >
+                {videoMuted ? <VideoOff size={15} /> : <Video size={15} />}
+                {videoMuted ? 'Camera Off' : 'Camera On'}
+              </button>
+            )}
 
-            <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <PhoneCall size={15} /> Join Video Call
-            </button>
-            <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <Tv size={15} /> Screen Share Only
-            </button>
+            {isFeatureVisible('chat.video_call') && (
+              <button className="call-btn-trigger" onClick={startCall} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#7c4dff', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <PhoneCall size={15} /> Join Video Call
+              </button>
+            )}
+
+            {isFeatureVisible('chat.screen_share') && isFeatureVisible('call.screen_share') && (
+              <button className="call-btn-trigger" onClick={toggleScreenShare} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                <Tv size={15} /> Screen Share Only
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '0.8rem', color: '#a78bfa', fontWeight: 600 }}>Active MoQ Session (#{projectName})</span>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={toggleScreenShare} style={{ padding: '6px 12px', background: screenSharing ? '#dc2626' : '#2563eb', color: '#fff', borderRadius: '6px', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Tv size={13} /> {screenSharing ? 'Stop Sharing' : 'Share Screen'}
-              </button>
+              {isFeatureVisible('chat.screen_share') && isFeatureVisible('call.screen_share') && (
+                <button onClick={toggleScreenShare} style={{ padding: '6px 12px', background: screenSharing ? '#dc2626' : '#2563eb', color: '#fff', borderRadius: '6px', border: 'none', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Tv size={13} /> {screenSharing ? 'Stop Sharing' : 'Share Screen'}
+                </button>
+              )}
               <button onClick={endCall} style={{ padding: '6px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <PhoneOff size={13} /> Leave Call
               </button>
@@ -1276,29 +1288,35 @@ export default function WebRTCCallWidget({ projectName, socket, username }) {
               {micMuted ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
 
-            <button
-              onClick={toggleVideo}
-              className={`call-tool-btn ${videoMuted ? 'active' : ''}`}
-              title={videoMuted ? 'Turn Video On' : 'Turn Video Off'}
-            >
-              {videoMuted ? <VideoOff size={16} /> : <Video size={16} />}
-            </button>
+            {isFeatureVisible('chat.video_call') && isFeatureVisible('call.video') && (
+              <button
+                onClick={toggleVideo}
+                className={`call-tool-btn ${videoMuted ? 'active' : ''}`}
+                title={videoMuted ? 'Turn Video On' : 'Turn Video Off'}
+              >
+                {videoMuted ? <VideoOff size={16} /> : <Video size={16} />}
+              </button>
+            )}
 
-            <button
-              onClick={switchCamera}
-              className="call-tool-btn"
-              title={`Switch Camera (${facingMode === 'user' ? 'Front' : 'Back'})`}
-            >
-              <RefreshCw size={16} />
-            </button>
+            {isFeatureVisible('chat.video_call') && isFeatureVisible('call.video') && (
+              <button
+                onClick={switchCamera}
+                className="call-tool-btn"
+                title={`Switch Camera (${facingMode === 'user' ? 'Front' : 'Back'})`}
+              >
+                <RefreshCw size={16} />
+              </button>
+            )}
 
-            <button
-              onClick={toggleScreenShare}
-              className={`call-tool-btn ${screenSharing ? 'active' : ''}`}
-              title={screenSharing ? 'Stop Sharing' : 'Share Screen'}
-            >
-              <Tv size={16} />
-            </button>
+            {isFeatureVisible('chat.screen_share') && isFeatureVisible('call.screen_share') && (
+              <button
+                onClick={toggleScreenShare}
+                className={`call-tool-btn ${screenSharing ? 'active' : ''}`}
+                title={screenSharing ? 'Stop Sharing' : 'Share Screen'}
+              >
+                <Tv size={16} />
+              </button>
+            )}
 
             {/* Maximize / Minimize button on control bar */}
             <button

@@ -11,6 +11,8 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import Navbar from './components/Navbar';
 import AIChatBot from './components/AIChatBot';
 import BackendStatusBanner from './components/BackendStatusBanner';
+import { FeatureAccessProvider } from './context/FeatureAccessContext';
+import FeatureRouteGuard from './components/FeatureRouteGuard';
 
 // Lazy load pages to decrease initial bundle size
 const Home = lazy(() => import('./pages/Home'));
@@ -18,11 +20,15 @@ const About = lazy(() => import('./pages/About'));
 const Help = lazy(() => import('./pages/Help'));
 const ChatRoom = lazy(() => import('./pages/ChatRoom'));
 const ProjectRoom = lazy(() => import('./pages/ProjectRoom'));
+const WhiteboardRoom = lazy(() => import('./pages/WhiteboardRoom'));
 const StandaloneEntry = lazy(() => import('./pages/StandaloneEntry'));
 const OfficeBoard = lazy(() => import('./pages/OfficeBoard'));
 const CallRoom = lazy(() => import('./pages/CallRoom'));
 const AdminFeedback = lazy(() => import('./pages/AdminFeedback'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminFeatureManager = lazy(() => import('./pages/AdminFeatureManager'));
+const Guide = lazy(() => import('./pages/Guide'));
+const GlobalChat = lazy(() => import('./pages/GlobalChat'));
 
 // Modern premium loading spinner component
 function LoadingSpinner() {
@@ -94,8 +100,15 @@ function AppContent() {
   const location = useLocation();
   const hideFooter = location.pathname.startsWith('/chat/') ||
                      location.pathname.startsWith('/projects/') ||
+                     location.pathname.startsWith('/document/') ||
+                     location.pathname.startsWith('/code/') ||
+                     location.pathname.startsWith('/whiteboard') ||
                      location.pathname.startsWith('/office') ||
                      location.pathname.startsWith('/call/') ||
+                     location.pathname.startsWith('/global-chat') ||
+                     location.pathname === '/global-chat' ||
+                     location.pathname === '/global-chat.html' ||
+                     location.pathname === '/chat/global' ||
                      location.pathname === '/document' ||
                      location.pathname === '/document.html' ||
                      location.pathname === '/code' ||
@@ -118,30 +131,45 @@ function AppContent() {
             <Route path="/about.html" element={<About />} />
             <Route path="/help" element={<Help />} />
             <Route path="/help.html" element={<Help />} />
+            <Route path="/guide" element={<Guide />} />
+            <Route path="/guide.html" element={<Guide />} />
 
             {/* Dynamic Collaboration Routes */}
-            <Route path="/chat/:roomName" element={<ChatRoom />} />
-            <Route path="/projects/:projectName" element={<ProjectRoom />} />
-            <Route path="/call/:roomName" element={<CallRoom />} />
+            <Route path="/global-chat" element={<FeatureRouteGuard feature="chat.global"><GlobalChat /></FeatureRouteGuard>} />
+            <Route path="/global-chat.html" element={<FeatureRouteGuard feature="chat.global"><GlobalChat /></FeatureRouteGuard>} />
+            <Route path="/chat/global" element={<FeatureRouteGuard feature="chat.global"><GlobalChat /></FeatureRouteGuard>} />
+            <Route path="/chat/:roomName" element={<FeatureRouteGuard feature="chat"><ChatRoom /></FeatureRouteGuard>} />
+            <Route path="/projects/:projectName" element={<FeatureRouteGuard feature="project"><ProjectRoom /></FeatureRouteGuard>} />
+            <Route path="/document/:projectName" element={<FeatureRouteGuard feature="project.document_board"><ProjectRoom defaultTab="document" standalone={true} /></FeatureRouteGuard>} />
+            <Route path="/code/:projectName" element={<FeatureRouteGuard feature="project.code_editor"><ProjectRoom defaultTab="code" standalone={true} /></FeatureRouteGuard>} />
+            <Route path="/call/:roomName" element={<FeatureRouteGuard feature="call"><CallRoom /></FeatureRouteGuard>} />
+
+            {/* Real-time Collaborative Whiteboard Routes */}
+            <Route path="/whiteboard" element={<FeatureRouteGuard feature="whiteboard"><WhiteboardRoom /></FeatureRouteGuard>} />
+            <Route path="/whiteboard.html" element={<FeatureRouteGuard feature="whiteboard"><WhiteboardRoom /></FeatureRouteGuard>} />
+            <Route path="/whiteboard/:roomName" element={<FeatureRouteGuard feature="whiteboard"><WhiteboardRoom /></FeatureRouteGuard>} />
 
             {/* Standalone Single-Pane Workspace Gateway Entries */}
-            <Route path="/chat" element={<StandaloneEntry tabType="chat" />} />
-            <Route path="/chat.html" element={<StandaloneEntry tabType="chat" />} />
-            <Route path="/projects" element={<StandaloneEntry tabType="project" />} />
-            <Route path="/projects.html" element={<StandaloneEntry tabType="project" />} />
-            <Route path="/call" element={<StandaloneEntry tabType="call" />} />
-            <Route path="/call.html" element={<StandaloneEntry tabType="call" />} />
-            <Route path="/document" element={<StandaloneEntry tabType="document" />} />
-            <Route path="/document.html" element={<StandaloneEntry tabType="document" />} />
-            <Route path="/code" element={<StandaloneEntry tabType="code" />} />
-            <Route path="/code.html" element={<StandaloneEntry tabType="code" />} />
+            <Route path="/chat" element={<FeatureRouteGuard feature="chat"><StandaloneEntry tabType="chat" /></FeatureRouteGuard>} />
+            <Route path="/chat.html" element={<FeatureRouteGuard feature="chat"><StandaloneEntry tabType="chat" /></FeatureRouteGuard>} />
+            <Route path="/projects" element={<FeatureRouteGuard feature="project"><StandaloneEntry tabType="project" /></FeatureRouteGuard>} />
+            <Route path="/projects.html" element={<FeatureRouteGuard feature="project"><StandaloneEntry tabType="project" /></FeatureRouteGuard>} />
+            <Route path="/call" element={<FeatureRouteGuard feature="call"><StandaloneEntry tabType="call" /></FeatureRouteGuard>} />
+            <Route path="/call.html" element={<FeatureRouteGuard feature="call"><StandaloneEntry tabType="call" /></FeatureRouteGuard>} />
+            <Route path="/document" element={<FeatureRouteGuard feature="project.document_board"><StandaloneEntry tabType="document" /></FeatureRouteGuard>} />
+            <Route path="/document.html" element={<FeatureRouteGuard feature="project.document_board"><StandaloneEntry tabType="document" /></FeatureRouteGuard>} />
+            <Route path="/code" element={<FeatureRouteGuard feature="project.code_editor"><StandaloneEntry tabType="code" /></FeatureRouteGuard>} />
+            <Route path="/code.html" element={<FeatureRouteGuard feature="project.code_editor"><StandaloneEntry tabType="code" /></FeatureRouteGuard>} />
 
             {/* Collaborative Office Board Routes */}
-            <Route path="/office" element={<OfficeBoard />} />
-            <Route path="/office.html" element={<OfficeBoard />} />
-            <Route path="/office/:roomName" element={<OfficeBoard />} />
+            <Route path="/office" element={<FeatureRouteGuard feature="officeboard"><OfficeBoard /></FeatureRouteGuard>} />
+            <Route path="/office.html" element={<FeatureRouteGuard feature="officeboard"><OfficeBoard /></FeatureRouteGuard>} />
+            <Route path="/office/:roomName" element={<FeatureRouteGuard feature="officeboard"><OfficeBoard /></FeatureRouteGuard>} />
+
+            {/* Administrative Management Routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/feedback" element={<AdminFeedback />} />
+            <Route path="/admin/features" element={<AdminFeatureManager />} />
           </Routes>
         </Suspense>
       </div>
@@ -149,7 +177,7 @@ function AppContent() {
       {/* Global sticky footer - dynamically hidden on workspace views */}
       {!hideFooter && (
         <footer className="footer">
-          <p style={{ margin: 0 }}>&copy; 2025 AnonHub. All rights reserved.</p>
+          <p style={{ margin: 0 }}>&copy; 2025 Trinetra. All rights reserved.</p>
         </footer>
       )}
 
@@ -164,14 +192,15 @@ function AppContent() {
 
 /**
  * Root Application Component
- * Wraps routes inside the React Router Context. Ensures Navbar is persistent
- * and binds a global sticky footer for copyright information.
+ * Wraps routes inside the React Router and FeatureAccess Contexts.
  */
 export default function App() {
   return (
     <Router>
-      <ScrollToTop />
-      <AppContent />
+      <FeatureAccessProvider>
+        <ScrollToTop />
+        <AppContent />
+      </FeatureAccessProvider>
     </Router>
   );
 }
