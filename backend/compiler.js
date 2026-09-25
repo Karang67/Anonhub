@@ -50,12 +50,13 @@ const SUPPORTED_LANGUAGES = new Set([
 // NEVER pass process.env directly — it contains .env secrets (DB URI, API keys, etc.)
 
 const SAFE_ENV = Object.freeze({
-    PATH:     process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-    HOME:     '/tmp',
-    TMPDIR:   TEMP_DIR,
-    LANG:     'en_US.UTF-8',
-    LC_ALL:   'en_US.UTF-8',
-    JAVA_HOME: process.env.JAVA_HOME || '',
+    PATH:        process.env.PATH || process.env.Path || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    Path:        process.env.PATH || process.env.Path || '',
+    HOME:        process.env.USERPROFILE || process.env.HOME || '/tmp',
+    TMPDIR:      TEMP_DIR,
+    LANG:        'en_US.UTF-8',
+    LC_ALL:      'en_US.UTF-8',
+    JAVA_HOME:   process.env.JAVA_HOME || '',
     PYTHON_PATH: process.env.PYTHON_PATH || '',
 });
 

@@ -29,7 +29,22 @@
   grid-template-columns: 1fr;
 }
 
-/* ─── Header (Auto-Hiding on Scroll Down) ─────────────────────────────────── */
+.callroom-root.not-in-call {
+  grid-template-areas:
+    "header header"
+    "grid   sidebar";
+  grid-template-rows: 56px 1fr;
+}
+
+.callroom-root.not-in-call.no-sidebar {
+  grid-template-areas:
+    "header"
+    "grid";
+  grid-template-columns: 1fr;
+  grid-template-rows: 56px 1fr;
+}
+
+/* ─── Header ─────────────────────────────────── */
 .callroom-header {
   grid-area: header;
   display: flex;
@@ -40,7 +55,94 @@
   border-bottom: 1px solid rgba(124, 77, 255, 0.15);
   backdrop-filter: blur(12px);
   z-index: 10;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.callroom-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  border-radius: 8px;
+  color: #c5b3ff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.callroom-nav-btn:hover {
+  background: rgba(124, 77, 255, 0.25);
+  color: #ffffff;
+  border-color: rgba(124, 77, 255, 0.45);
+}
+
+.callroom-title-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.callroom-room-tag {
+  font-size: 0.72rem;
+  color: rgba(200, 180, 255, 0.5);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.callroom-protocol-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 3px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.callroom-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  background: rgba(124, 77, 255, 0.12);
+  border: 1px solid rgba(124, 77, 255, 0.25);
+  border-radius: 8px;
+  color: #c5b3ff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.callroom-chat-btn:hover {
+  background: rgba(124, 77, 255, 0.25);
+  color: #ffffff;
+}
+
+.callroom-chat-btn.has-unread {
+  border-color: #7c4dff;
+  box-shadow: 0 0 12px rgba(124, 77, 255, 0.4);
+}
+
+.callroom-unread-badge {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 6px;
+  line-height: 1.2;
 }
 
 .callroom-header.nav-hidden {

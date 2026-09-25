@@ -113,11 +113,12 @@ function AppContent() {
                      location.pathname === '/document.html' ||
                      location.pathname === '/code' ||
                      location.pathname === '/code.html';
+  const isCallRoom = location.pathname.startsWith('/call/') || location.pathname.startsWith('/call');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* Global Navigation Header */}
-      <Navbar />
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: isCallRoom ? '#04050a' : undefined }}>
+      {/* Global Navigation Header (hidden on dedicated full-screen call room) */}
+      {!isCallRoom && <Navbar />}
 
       {/* Main Workspace Frame */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -182,7 +183,7 @@ function AppContent() {
       )}
 
       {/* Global Floating AI Chatbot Widget */}
-      <AIChatBot />
+      {!isCallRoom && <AIChatBot />}
 
       {/* Render Backend Health & Cold-Start Monitoring Banner */}
       <BackendStatusBanner />

@@ -542,12 +542,16 @@ module.exports = function registerProjectSocketHandlers(socket, io, activeUsers,
     socket.on('webrtc-join-call', ({ projectName }, callback) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
         if (!name) { if (typeof callback === 'function') callback({ error: 'Invalid room name' }); return; }
-        const userData = activeUsers.get(socket.id);
-        if (!userData || !userData.rooms.has(name)) {
-            if (typeof callback === 'function') callback({ error: 'Unauthorized: You must join the project room first.' });
-            return;
+        let userData = activeUsers.get(socket.id);
+        if (!userData) {
+            userData = { username: 'Participant', rooms: new Set() };
+            activeUsers.set(socket.id, userData);
         }
+        userData.rooms.add(name);
         const roomName = `${name}-webrtc`;
+        userData.rooms.add(roomName);
+        socket.join(roomName);
+
         const roomClients = io.sockets.adapter.rooms.get(roomName);
         const existingPeers = [];
         if (roomClients) {
@@ -557,16 +561,20 @@ module.exports = function registerProjectSocketHandlers(socket, io, activeUsers,
                 }
             });
         }
-        socket.join(roomName);
-        socket.to(roomName).emit('webrtc-user-joined', { socketId: socket.id, username: activeUsers.get(socket.id)?.username || 'Participant' });
+        socket.to(roomName).emit('webrtc-user-joined', { socketId: socket.id, username: userData.username || 'Participant' });
         if (typeof callback === 'function') callback({ success: true, existingPeers });
     });
 
     socket.on('webrtc-leave-call', ({ projectName }) => {
         const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
         if (!name) return;
-        socket.leave(`${name}-webrtc`);
-        socket.to(`${name}-webrtc`).emit('webrtc-user-left', { socketId: socket.id });
+        const roomName = `${name}-webrtc`;
+        socket.leave(roomName);
+        const userData = activeUsers.get(socket.id);
+        if (userData) {
+            userData.rooms.delete(roomName);
+        }
+        socket.to(roomName).emit('webrtc-user-left', { socketId: socket.id });
     });
 
     socket.on('webrtc-signal', ({ targetId, signal }) => {

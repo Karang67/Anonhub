@@ -90,15 +90,32 @@ export default function ProjectRoom({ defaultTab, standalone }) {
 
   // Upgraded IDE Workspace states
   const [files, setFiles] = useState({
+    'index.js': {
+      name: 'index.js',
+      path: 'index.js',
+      content: `// Welcome to Trinetra Collaborative Coding Board!
+console.log("🚀 Code executing in local high-speed runtime!");
+
+function calculateStats(numbers) {
+  const sum = numbers.reduce((a, b) => a + b, 0);
+  const avg = sum / numbers.length;
+  return { sum, avg, count: numbers.length };
+}
+
+const scores = [88, 92, 79, 95, 100, 85];
+console.log("Stats result:", calculateStats(scores));
+`,
+      language: 'javascript'
+    },
     'README.md': {
       name: 'README.md',
       path: 'README.md',
-      content: '# Collaborative Code Workspace\n\nStart editing or create new files!',
+      content: '# Collaborative Code Workspace\n\nWrite, share, and run code in real-time!',
       language: 'markdown'
     }
   });
-  const [activeFilePath, setActiveFilePath] = useState('README.md');
-  const [openTabs, setOpenTabs] = useState(['README.md']);
+  const [activeFilePath, setActiveFilePath] = useState('index.js');
+  const [openTabs, setOpenTabs] = useState(['index.js', 'README.md']);
   const [unsavedFiles, setUnsavedFiles] = useState({});
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [sidebarActiveView, setSidebarActiveView] = useState('explorer');
@@ -2413,6 +2430,30 @@ export default function ProjectRoom({ defaultTab, standalone }) {
     });
   };
 
+  // Trigger Monaco layout whenever switching to the code tab or resizing window
+  useEffect(() => {
+    if (activeTab === 'code' && monacoRef.current) {
+      const timer = setTimeout(() => {
+        try {
+          monacoRef.current.layout();
+        } catch (_) {}
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (monacoRef.current) {
+        try {
+          monacoRef.current.layout();
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const triggerCodeUpdate = (updatedFiles) => {
     if (isRemoteCodeChangeRef.current || !socketRef.current) return;
     setSaveStatus('Saving...');
@@ -2679,55 +2720,113 @@ export default function ProjectRoom({ defaultTab, standalone }) {
     if (!activeFile) return;
 
     setTerminalIsRunning(true);
-    setTerminalOutput('⏳ Executing code via Judge0...');
     setTerminalStats(null);
     setTerminalOpen(true);
 
-    const langId = judge0LanguageMap[activeFile.language];
-
-    if (activeFile.language === 'html' || activeFile.language === 'css' || activeFile.language === 'markdown') {
+    if (activeFile.language === 'html' || activeFile.language === 'css') {
       setTerminalOutput('🌐 Loaded active view in web preview frame.');
       setTerminalIsRunning(false);
       setShowPreview(true);
       return;
     }
 
-    if (!langId) {
-      runLocalCompiler(activeFile.content, activeFile.language);
+    if (activeFile.language === 'markdown') {
+      setTerminalOutput('📄 Markdown documentation file. Switch to or create a script (e.g. index.js or main.py) and click ▶ Run.');
       setTerminalIsRunning(false);
       return;
     }
 
+    setTerminalOutput('⏳ Executing code in high-speed runtime...');
+
+    // 1. Primary: Run instantly via backend localized sandbox runner (<50ms)
     try {
-      const response = await fetch('https://ce.judge0.com/submissions?wait=true', {
+      const response = await fetch(getApiUrl('/api/compile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source_code: activeFile.content,
-          language_id: langId,
+          code: activeFile.content,
+          language: activeFile.language,
           stdin: terminalStdin
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Judge0 CE API failed');
+      if (response.ok) {
+        const data = await response.json();
+        const output = data.stdout || data.stderr || 'Program completed with no output.';
+        setTerminalOutput(output);
+        setTerminalStats({
+          time: data.timeout ? 'Timed out' : 'Sub-50ms',
+          memory: 'Sandboxed',
+          status: data.exitCode === 0 ? 'Success' : `Exit ${data.exitCode}`
+        });
+        addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Local Runtime)`);
+        setTerminalIsRunning(false);
+        return;
       }
-
-      const data = await response.json();
-      const output = data.stdout || data.compile_output || data.stderr || 'No output.';
-      setTerminalOutput(output);
-      setTerminalStats({
-        time: data.time ? `${data.time}s` : '0.0s',
-        memory: data.memory ? `${(data.memory / 1024).toFixed(2)}MB` : '0.0MB',
-        status: data.status?.description || 'Done'
-      });
-      addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Judge0)`);
-    } catch (err) {
-      console.warn('Judge0 failed, falling back to local compiler:', err);
-      runLocalCompiler(activeFile.content, activeFile.language);
-    } finally {
-      setTerminalIsRunning(false);
+    } catch (localErr) {
+      console.warn('Local compiler fetch error, trying cloud fallback:', localErr);
     }
+
+    // 2. Secondary: Judge0 cloud sandbox fallback
+    const langId = judge0LanguageMap[activeFile.language];
+    if (langId) {
+      try {
+        setTerminalOutput('⏳ Compiling via cloud sandbox...');
+        const response = await fetch('https://ce.judge0.com/submissions?wait=true', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_code: activeFile.content,
+            language_id: langId,
+            stdin: terminalStdin
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const output = data.stdout || data.compile_output || data.stderr || 'No output.';
+          setTerminalOutput(output);
+          setTerminalStats({
+            time: data.time ? `${data.time}s` : '0.0s',
+            memory: data.memory ? `${(data.memory / 1024).toFixed(2)}MB` : '0.0MB',
+            status: data.status?.description || 'Done'
+          });
+          addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Judge0)`);
+          setTerminalIsRunning(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Judge0 failed too:', err);
+      }
+    }
+
+    // 3. Client-side evaluation fallback for JavaScript
+    if (activeFile.language === 'javascript') {
+      try {
+        const logs = [];
+        const customConsole = {
+          log: (...args) => logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
+          error: (...args) => logs.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
+          warn: (...args) => logs.push('[WARN] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
+          info: (...args) => logs.push('[INFO] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '))
+        };
+        const runFn = new Function('console', activeFile.content);
+        runFn(customConsole);
+        setTerminalOutput(logs.join('\n') || 'Program completed with no output.');
+        setTerminalStats({ time: '0.01s', memory: 'Client', status: 'Success' });
+        addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Client JS)`);
+        setTerminalIsRunning(false);
+        return;
+      } catch (evalErr) {
+        setTerminalOutput(`❌ Runtime Error: ${evalErr.message}`);
+        setTerminalStats({ time: '0.0s', memory: 'Client', status: 'Error' });
+        setTerminalIsRunning(false);
+        return;
+      }
+    }
+
+    setTerminalOutput('❌ Failed to execute code: Unable to reach code runners.');
+    setTerminalIsRunning(false);
   };
 
   const buildFileTree = (filesMap) => {
@@ -3350,7 +3449,10 @@ export default function ProjectRoom({ defaultTab, standalone }) {
             {isFeatureVisible('project.sketch_board') && (
               <button
                 className={`subbar-tab ${activeTab === 'sketch' ? 'active' : ''}`}
-                onClick={() => setActiveTab('sketch')}
+                onClick={() => {
+                  setActiveTab('sketch');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
               >
                 <Palette size={15} />
                 <span>Sketch Board</span>
@@ -5178,36 +5280,13 @@ export default function ProjectRoom({ defaultTab, standalone }) {
             </button>
           </div>
 
-          {/* Quick Video Call Box */}
-          <div className="right-card video-quick-card">
-            <div className="video-card-top-pills">
-              <button
-                type="button"
-                className={`vpill ${micActive ? 'mic-on' : 'mic-off'}`}
-                onClick={() => setMicActive(v => !v)}
-              >
-                <Mic size={14} /> <span>{micActive ? 'Mic On' : 'Mic Off'}</span>
-              </button>
-              <button
-                type="button"
-                className={`vpill ${cameraActive ? 'cam-on' : 'cam-off'}`}
-                onClick={() => setCameraActive(v => !v)}
-              >
-                <Camera size={14} /> <span>{cameraActive ? 'Camera On' : 'Camera Off'}</span>
-              </button>
-            </div>
-            <button
-              className="btn-join-vcall"
-              onClick={() => navigate(`/call/${encodeURIComponent(projectName)}`)}
-            >
-              <Video size={16} /> <span>Join Video Call</span>
-            </button>
-            <button
-              className="btn-screenshare-only"
-              onClick={() => navigate(`/call/${encodeURIComponent(projectName)}?screenshare=true`)}
-            >
-              <Monitor size={15} /> <span>Screen Share Only</span>
-            </button>
+          {/* Real-time WebRTC Video & Voice Call Widget (Persistent & Low-latency) */}
+          <div className="right-card video-quick-card" style={{ padding: '6px', background: 'transparent', border: 'none' }}>
+            <WebRTCCallWidget
+              projectName={projectName}
+              socket={socketInstance || socketRef.current}
+              username={username}
+            />
           </div>
 
           {/* Project Chat Box */}

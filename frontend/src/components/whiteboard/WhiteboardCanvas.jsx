@@ -33,15 +33,10 @@ export default function WhiteboardCanvas({
     if (activeSocket && !activeSocket.connected) {
       activeSocket.connect();
     }
-    return () => {
-      if (socketInstanceRef.current && socketInstanceRef.current !== socket) {
-        socketInstanceRef.current.disconnect();
-      }
-    };
-  }, [activeSocket, socket]);
+  }, [activeSocket]);
 
   const [isConnected, setIsConnected] = useState(false);
-  const [peers, setPeers] = useState([]);
+  const [peers, setPeers] = useState([]); 
   const [remoteCursors, setRemoteCursors] = useState({});
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState('Saved');
