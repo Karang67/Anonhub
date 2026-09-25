@@ -1,0 +1,67 @@
+# ==============================================================================
+# AnonHub - Self-Hosted Open-Source Sandbox Runners
+# Run completely private, unlimited sandboxed code execution for all room peers.
+# ==============================================================================
+# Usage:
+#   1. Start the Piston sandbox:
+#      docker compose -f docker-compose.sandbox.yml up -d
+#
+#   2. Install language packages inside Piston:
+#      docker exec -it anonhub-piston piston-cli install python nodejs gcc openjdk rust go
+#
+#   3. Test the sandbox:
+#      curl http://localhost:2000/api/v2/runtimes
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # PISTON: Lightweight, lightning-fast execution engine by EngineerMan
+  # Supports 40+ languages, cgroup sandboxing, isolate security, simple HTTP API
+  # ────────────────────────────────────────────────────────────────────────────
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: anonhub-piston
+    restart: unless-stopped
+    privileged: true # Required for Piston's internal Linux cgroup isolate sandboxing
+    ports:
+      - "2000:2000"
+    volumes:
+      - piston_packages:/piston/packages
+    environment:
+      - PISTON_BIND_ADDRESS=0.0.0.0:2000
+    networks:
+      - anonhub-network
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Companion Language Auto-Installer for Piston
+  # Automatically downloads and configures top languages on first boot
+  # ────────────────────────────────────────────────────────────────────────────
+  piston-init:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: anonhub-piston-init
+    restart: "no"
+    depends_on:
+      - piston
+    volumes:
+      - piston_packages:/piston/packages
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Waiting for Piston engine to be ready...';
+        sleep 3;
+        echo 'Installing common language packages (python, nodejs, gcc, openjdk)...';
+        piston-cli install python nodejs gcc openjdk rust go || true;
+        echo 'Language packages installed successfully!';
+      "
+    networks:
+      - anonhub-network
+
+volumes:
+  piston_packages:
+    name: anonhub_piston_packages
+
+networks:
+  anonhub-network:
+    name: anonhub-network
+    driver: bridge

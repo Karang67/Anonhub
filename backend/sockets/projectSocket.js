@@ -15,6 +15,7 @@ const { verifyAccessKey } = require('../middleware/auth');
 const { saveProjectVersion } = require('../controllers/versionController');
 const { isValidObjectId } = require('../utils/helpers');
 const { MAX_NAME_LEN, MAX_KEY_LEN, MAX_CODE_LEN, MIN_KEY_LEN, BCRYPT_ROUNDS, WHITEBOARD_MAX_PAYLOAD_BYTES, WHITEBOARD_MAX_OBJECTS } = require('../config/db');
+const { executeCode } = require('../services/sandboxService');
 const { log } = require('../utils/logger');
 
 // ─── Throttled activity tracking (max 1 DB write per 30s per room) ────────────
@@ -247,6 +248,103 @@ module.exports = function registerProjectSocketHandlers(socket, io, activeUsers,
         socket.to(name).emit('code content', { code: safeCode, language });
         codeUpdateCount++;
         if (codeUpdateCount % 5 === 0) saveProjectVersion(name, 'code', safeCode, language || 'javascript');
+    });
+
+    // ─── run code (real-time collaborative execution & broadcast) ────────────
+
+    socket.on('run code', async ({ projectName, filePath, fileName, code, language, stdin }) => {
+        if (!checkSocketRateLimit(socket.id, 'run code', 15, 10_000)) {
+            socket.emit('code execution result', {
+                room: projectName,
+                fileName: fileName || 'script',
+                language: language || 'javascript',
+                stdout: '',
+                stderr: 'Rate limit exceeded: Please wait a moment before running code again.',
+                exitCode: 1,
+                time: '0.0s',
+                memory: 'N/A',
+                engine: 'Rate Limiter',
+                timestamp: Date.now()
+            });
+            return;
+        }
+
+        const name = String(projectName || '').trim().slice(0, MAX_NAME_LEN);
+        if (!name) return;
+        const userData = activeUsers.get(socket.id);
+        if (!userData || !userData.rooms.has(name)) return;
+
+        const runnerUser = userData.username || 'Collaborator';
+        const targetFileName = fileName || (filePath ? filePath.split('/').pop() : 'script');
+
+        // Grab current code from workspace database if not supplied by the caller
+        let targetCode = code;
+        let targetLang = language;
+        if (!targetCode) {
+            try {
+                const project = await Project.findOne({ name }).select('code codeLanguage').lean();
+                if (project) {
+                    targetCode = project.code || '';
+                    targetLang = targetLang || project.codeLanguage || 'javascript';
+                }
+            } catch (dbErr) {
+                log('warn', `Could not fetch project code for room "${name}": ${dbErr.message}`);
+            }
+        }
+
+        // 1. Broadcast execution start to all peers in the shared workspace
+        io.to(name).emit('code execution started', {
+            room: name,
+            fileName: targetFileName,
+            filePath,
+            language: targetLang,
+            runBy: runnerUser,
+            timestamp: Date.now()
+        });
+
+        // 2. Forward to sandboxed engine (Piston / Judge0 / local runner)
+        try {
+            const result = await executeCode({
+                code: targetCode || '',
+                language: targetLang,
+                stdin: stdin || '',
+                fileName: targetFileName
+            });
+
+            // 3. Broadcast output simultaneously to all peers in that workspace
+            io.to(name).emit('code execution result', {
+                room: name,
+                fileName: targetFileName,
+                filePath,
+                language: targetLang,
+                runBy: runnerUser,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                exitCode: result.exitCode,
+                timeout: result.timeout,
+                time: result.time,
+                memory: result.memory,
+                engine: result.engine,
+                timestamp: Date.now()
+            });
+        } catch (err) {
+            log('error', `Socket code execution error for room "${name}":`, err);
+            io.to(name).emit('code execution result', {
+                room: name,
+                fileName: targetFileName,
+                filePath,
+                language: targetLang,
+                runBy: runnerUser,
+                stdout: '',
+                stderr: `Execution error: ${err.message}`,
+                exitCode: 1,
+                timeout: false,
+                time: '0.0s',
+                memory: 'N/A',
+                engine: 'Error',
+                timestamp: Date.now()
+            });
+        }
     });
 
     // ─── update project permissions ───────────────────────────────────────────

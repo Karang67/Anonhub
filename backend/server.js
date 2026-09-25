@@ -112,17 +112,39 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://unpkg.com"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+            scriptSrc: [
+                "'self'", "'unsafe-inline'", "'unsafe-eval'",
+                "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://unpkg.com",
+                "https://stackblitz.com", "https://*.stackblitz.com"
+            ],
+            styleSrc: [
+                "'self'", "'unsafe-inline'",
+                "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"
+            ],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "data:", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "blob:", "https:"],
-            connectSrc: ["'self'", "wss:", "ws:", "http:", "https:"],
-            workerSrc: ["'self'", "blob:"],
-            frameSrc: ["'self'", "blob:", "https://cdnjs.cloudflare.com"],
-            childSrc: ["'self'", "blob:"],
+            connectSrc: [
+                "'self'", "wss:", "ws:", "http:", "https:",
+                "https://stackblitz.com", "https://*.stackblitz.com", "https://*.webcontainer.io", "wss://*.webcontainer.io"
+            ],
+            workerSrc: ["'self'", "blob:", "https://*.stackblitz.com", "https://*.webcontainer.io"],
+            frameSrc: [
+                "'self'", "blob:", "https://cdnjs.cloudflare.com",
+                "https://stackblitz.com", "https://*.stackblitz.com", "https://*.webcontainer.io"
+            ],
+            childSrc: [
+                "'self'", "blob:",
+                "https://stackblitz.com", "https://*.stackblitz.com", "https://*.webcontainer.io"
+            ],
+            formAction: [
+                "'self'",
+                "https://stackblitz.com", "https://*.stackblitz.com"
+            ],
         }
     },
-    crossOriginEmbedderPolicy: false,
+    crossOriginEmbedderPolicy: { policy: 'credentialless' },
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 const corsOptions = {
@@ -179,7 +201,7 @@ app.use((req, res, next) => {
 
 app.use('/api/admin',  adminRoutes);
 app.use('/',           attachmentRoutes);
-app.use('/api',        compileRoutes);
+app.use('/api',        compileRoutes(io));
 app.use('/api',        aiRoutes);
 app.use('/',           projectRoutes);
 app.use('/',           chatRoutes);
@@ -218,6 +240,16 @@ registerSocketHandlers(io);
 // ─── Start Cleanup Scheduler ──────────────────────────────────────────────────
 
 startCleanupScheduler();
+
+// ─── Process Error Guards ─────────────────────────────────────────────────────
+
+process.on('unhandledRejection', (reason) => {
+    log('warn', 'Unhandled Rejection caught safely:', reason?.message || reason);
+});
+
+process.on('uncaughtException', (err) => {
+    log('error', 'Uncaught Exception caught safely:', err?.message || err);
+});
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 

@@ -26,6 +26,7 @@ import AccessKeyModal from '../components/AccessKeyModal';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import WebRTCCallWidget from '../components/WebRTCCallWidget';
 import WhiteboardCanvas from '../components/whiteboard/WhiteboardCanvas';
+import StackBlitzSandbox from '../components/StackBlitzSandbox';
 import './ProjectRoom.css';
 
 /**
@@ -39,10 +40,10 @@ export default function ProjectRoom({ defaultTab, standalone }) {
   const navigate = useNavigate();
   const { isFeatureVisible, can } = useFeatureAccess();
 
-  // standaloneMode checks if the workspace was loaded targeting a single specific pane (e.g. /document/:name, /code/:name, or ?tab=document)
-  const pathTab = location.pathname.startsWith('/document') ? 'document' : (location.pathname.startsWith('/code') ? 'code' : null);
+  // standaloneMode checks if the workspace was loaded targeting a single specific pane (e.g. /document/:name, /code/:name, /sandbox/:name, or ?tab=document)
+  const pathTab = location.pathname.startsWith('/document') ? 'document' : (location.pathname.startsWith('/code') ? 'code' : (location.pathname.startsWith('/sandbox') ? 'sandbox' : null));
   const queryTab = defaultTab || pathTab || searchParams.get('tab');
-  const standaloneMode = Boolean(standalone || pathTab || queryTab === 'document' || queryTab === 'code');
+  const standaloneMode = Boolean(standalone || pathTab || queryTab === 'document' || queryTab === 'code' || queryTab === 'sandbox');
 
   // Panel management state hooks
   const [activeTab, setActiveTab] = useState(queryTab || 'sketch');
@@ -1295,6 +1296,27 @@ console.log("Stats result:", calculateStats(scores));
       }
       isRemoteCodeChangeRef.current = false;
       addTimelineEvent('💻 Collaborative workspace files synced');
+    });
+
+    socket.on('code execution started', ({ fileName, language, runBy }) => {
+      setTerminalIsRunning(true);
+      setTerminalOpen(true);
+      setTerminalOutput(`⏳ ${runBy || 'Peer'} is running ${fileName || 'code'} (${language || 'script'})...\n`);
+    });
+
+    socket.on('code execution result', ({ fileName, language, runBy, stdout, stderr, exitCode, timeout, time, memory, engine }) => {
+      setTerminalIsRunning(false);
+      setTerminalOpen(true);
+      const output = stdout || stderr || 'Program completed with no output.';
+      setTerminalOutput(output);
+      setTerminalStats({
+        time: timeout ? 'Timed out' : (time || '0.0s'),
+        memory: memory || 'Sandboxed',
+        status: exitCode === 0 ? 'Success' : `Exit ${exitCode}`,
+        engine: engine || 'Sandbox',
+        runBy: runBy || 'Collaborator'
+      });
+      addTimelineEvent(`🚀 ${runBy || 'Peer'} ran ${fileName || 'code'} (${engine || 'Sandbox'})`);
     });
 
     socket.on('cursor position', ({ socketId, username, color, path, position }) => {
@@ -2693,23 +2715,31 @@ console.log("Stats result:", calculateStats(scores));
   };
 
   const runLocalCompiler = async (code, language) => {
-    setTerminalOutput('⏳ Executing code via local compiler...');
+    setTerminalOutput('⏳ Executing code via sandbox compiler...');
     try {
       const response = await fetch(getApiUrl('/api/compile'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language })
+        body: JSON.stringify({
+          code,
+          language,
+          room: projectName,
+          fileName: files[activeFilePath]?.name || 'script',
+          runBy: username || 'You'
+        })
       });
       const data = await response.json();
       const output = data.stdout || data.stderr || 'No output.';
       setTerminalOutput(output);
       setTerminalStats({
-        time: data.timeout ? 'Timed out' : '8.0s limit',
-        memory: 'N/A',
-        status: data.exitCode === 0 ? 'Success' : 'Failed'
+        time: data.timeout ? 'Timed out' : (data.time || 'Sub-50ms'),
+        memory: data.memory || 'Sandboxed',
+        status: data.exitCode === 0 ? 'Success' : `Exit ${data.exitCode}`,
+        engine: data.engine || 'Sandbox',
+        runBy: username || 'You'
       });
       setTerminalOpen(true);
-      addTimelineEvent(`🚀 Ran code: ${files[activeFilePath]?.name} (Local Compiler)`);
+      addTimelineEvent(`🚀 Ran code: ${files[activeFilePath]?.name || 'script'} (${data.engine || 'Sandbox'})`);
     } catch (err) {
       setTerminalOutput(`❌ Execution failed: ${err.message}`);
     }
@@ -2736,9 +2766,23 @@ console.log("Stats result:", calculateStats(scores));
       return;
     }
 
-    setTerminalOutput('⏳ Executing code in high-speed runtime...');
+    setTerminalOutput('⏳ Dispatching execution to sandbox engine...');
 
-    // 1. Primary: Run instantly via backend localized sandbox runner (<50ms)
+    // 1. Primary: Run via real-time WebSocket runner (broadcasts to all workspace peers)
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('run code', {
+        projectName,
+        filePath: activeFilePath,
+        fileName: activeFile.name,
+        code: activeFile.content,
+        language: activeFile.language,
+        stdin: terminalStdin
+      });
+      // The socket listener 'code execution result' handles updating the terminal & peers
+      return;
+    }
+
+    // 2. HTTP Fallback via Backend Sandbox Runner with room broadcast
     try {
       const response = await fetch(getApiUrl('/api/compile'), {
         method: 'POST',
@@ -2746,7 +2790,10 @@ console.log("Stats result:", calculateStats(scores));
         body: JSON.stringify({
           code: activeFile.content,
           language: activeFile.language,
-          stdin: terminalStdin
+          stdin: terminalStdin,
+          room: projectName,
+          fileName: activeFile.name,
+          runBy: username || 'You'
         })
       });
 
@@ -2755,19 +2802,21 @@ console.log("Stats result:", calculateStats(scores));
         const output = data.stdout || data.stderr || 'Program completed with no output.';
         setTerminalOutput(output);
         setTerminalStats({
-          time: data.timeout ? 'Timed out' : 'Sub-50ms',
-          memory: 'Sandboxed',
-          status: data.exitCode === 0 ? 'Success' : `Exit ${data.exitCode}`
+          time: data.timeout ? 'Timed out' : (data.time || 'Sub-50ms'),
+          memory: data.memory || 'Sandboxed',
+          status: data.exitCode === 0 ? 'Success' : `Exit ${data.exitCode}`,
+          engine: data.engine || 'Sandbox',
+          runBy: username || 'You'
         });
-        addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Local Runtime)`);
+        addTimelineEvent(`🚀 Ran code: ${activeFile.name} (${data.engine || 'Sandbox'})`);
         setTerminalIsRunning(false);
         return;
       }
     } catch (localErr) {
-      console.warn('Local compiler fetch error, trying cloud fallback:', localErr);
+      console.warn('Sandbox compiler fetch error, trying cloud fallback:', localErr);
     }
 
-    // 2. Secondary: Judge0 cloud sandbox fallback
+    // 3. Secondary: Judge0 cloud sandbox fallback
     const langId = judge0LanguageMap[activeFile.language];
     if (langId) {
       try {
@@ -2789,7 +2838,9 @@ console.log("Stats result:", calculateStats(scores));
           setTerminalStats({
             time: data.time ? `${data.time}s` : '0.0s',
             memory: data.memory ? `${(data.memory / 1024).toFixed(2)}MB` : '0.0MB',
-            status: data.status?.description || 'Done'
+            status: data.status?.description || 'Done',
+            engine: 'Judge0 Cloud',
+            runBy: username || 'You'
           });
           addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Judge0)`);
           setTerminalIsRunning(false);
@@ -2800,7 +2851,7 @@ console.log("Stats result:", calculateStats(scores));
       }
     }
 
-    // 3. Client-side evaluation fallback for JavaScript
+    // 4. Client-side evaluation fallback for JavaScript
     if (activeFile.language === 'javascript') {
       try {
         const logs = [];
@@ -2813,13 +2864,13 @@ console.log("Stats result:", calculateStats(scores));
         const runFn = new Function('console', activeFile.content);
         runFn(customConsole);
         setTerminalOutput(logs.join('\n') || 'Program completed with no output.');
-        setTerminalStats({ time: '0.01s', memory: 'Client', status: 'Success' });
+        setTerminalStats({ time: '0.01s', memory: 'Client', status: 'Success', engine: 'Client JS', runBy: username || 'You' });
         addTimelineEvent(`🚀 Ran code: ${activeFile.name} (Client JS)`);
         setTerminalIsRunning(false);
         return;
       } catch (evalErr) {
         setTerminalOutput(`❌ Runtime Error: ${evalErr.message}`);
-        setTerminalStats({ time: '0.0s', memory: 'Client', status: 'Error' });
+        setTerminalStats({ time: '0.0s', memory: 'Client', status: 'Error', engine: 'Client JS', runBy: username || 'You' });
         setTerminalIsRunning(false);
         return;
       }
@@ -3400,7 +3451,8 @@ console.log("Stats result:", calculateStats(scores));
       )}
 
       {/* Top Project Subheader Bar */}
-      <div className="project-top-subbar">
+      {!isHeaderCollapsed && (
+        <div className="project-top-subbar">
         <div className="subbar-left">
           {/* Project Title & Nickname Edit */}
           <div className="project-title-group">
@@ -3479,6 +3531,18 @@ console.log("Stats result:", calculateStats(scores));
                 <span>Coding Board</span>
               </button>
             )}
+            <button
+              className={`subbar-tab ${activeTab === 'sandbox' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('sandbox');
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+              }}
+              title="Browser Sandbox (StackBlitz WebContainers)"
+              style={activeTab === 'sandbox' ? { borderColor: '#38bdf8' } : {}}
+            >
+              <Monitor size={15} />
+              <span>Browser Sandbox</span>
+            </button>
             {isFeatureVisible('project.smart_notes') && (
               <button
                 className={`subbar-tab ${activeTab === 'notes' ? 'active' : ''}`}
@@ -3550,8 +3614,38 @@ console.log("Stats result:", calculateStats(scores));
           >
             <LogOut size={14} /> <span>Leave Workspace</span>
           </button>
+
+          {/* Arrow Button to Hide Header */}
+          <button
+            onClick={() => {
+              setIsHeaderCollapsed(true);
+              setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
+            }}
+            className="subbar-collapse-toggle-btn"
+            title="Hide Header (Focus Mode)"
+            aria-label="Hide Header"
+          >
+            <ChevronUp size={16} />
+          </button>
         </div>
       </div>
+      )}
+
+      {/* Floating Expand Arrow Pill when Header is Hidden */}
+      {isHeaderCollapsed && (
+        <button
+          onClick={() => {
+            setIsHeaderCollapsed(false);
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
+          }}
+          className="subbar-expand-floating-btn"
+          title="Show Workspace Header"
+          aria-label="Show Workspace Header"
+        >
+          <ChevronDown size={14} />
+          <span>Show Header</span>
+        </button>
+      )}
 
       <main className={`project-power-workspace ${standaloneMode ? 'standalone-mode' : ''} ${chatVisible ? '' : 'chat-hidden'}`}>
         {/* Floating mobile toggle for chat drawer */}
@@ -4426,7 +4520,7 @@ console.log("Stats result:", calculateStats(scores));
                   )}
 
                   {/* Monaco Editor Pane */}
-                  <div className="ide-monaco-wrapper">
+                  <div className="ide-monaco-wrapper" style={{ position: 'relative', overflow: 'hidden' }}>
                     {activeFilePath && files[activeFilePath] ? (
                       <Editor
                         height="100%"
@@ -4573,8 +4667,18 @@ console.log("Stats result:", calculateStats(scores));
                     </div>
 
                     {bottomTerminalActiveTab === 'console' && terminalStats && (
-                      <span className="terminal-stats-badge">
-                        ⏱️ {terminalStats.time} | 💾 {terminalStats.memory} | Status: {terminalStats.status}
+                      <span className="terminal-stats-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {terminalStats.engine && (
+                          <span style={{ color: '#a78bfa', background: 'rgba(167, 139, 250, 0.15)', padding: '1px 6px', borderRadius: '3px', fontWeight: 700 }}>
+                            {terminalStats.engine}
+                          </span>
+                        )}
+                        <span>⏱️ {terminalStats.time}</span>
+                        <span>💾 {terminalStats.memory}</span>
+                        <span>Status: <strong style={{ color: terminalStats.status === 'Success' ? '#4ade80' : '#f87171' }}>{terminalStats.status}</strong></span>
+                        {terminalStats.runBy && (
+                          <span style={{ color: '#94a3b8' }}>👤 {terminalStats.runBy}</span>
+                        )}
                       </span>
                     )}
 
@@ -4754,6 +4858,27 @@ console.log("Stats result:", calculateStats(scores));
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Dedicated Browser Sandbox (StackBlitz WebContainer) Pane */}
+            <div
+              id="pane-sandbox"
+              className={`workspace-pane ${activeTab === 'sandbox' ? 'active' : ''}`}
+              style={{
+                height: '100%',
+                padding: 0,
+                display: activeTab === 'sandbox' ? 'flex' : 'none',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}
+            >
+              <StackBlitzSandbox
+                files={files}
+                activeFilePath={activeFilePath}
+                projectName={projectName}
+                isVisible={activeTab === 'sandbox'}
+                onSwitchToPiston={() => setActiveTab('code')}
+              />
             </div>
 
             {/* 4. Smart Notes Pane */}
@@ -5256,7 +5381,7 @@ console.log("Stats result:", calculateStats(scores));
                 <span className="status-dot-green">●</span>
                 <span>Saved</span>
                 <span className="status-divider">|</span>
-                <span>Board: <strong>{activeTab === 'document' ? 'Document Board' : (activeTab === 'code' ? 'Coding Board' : (activeTab === 'notes' ? 'Smart Notes' : (activeTab === 'polls' ? 'Polls' : (activeTab === 'snippets' ? 'Snippets' : 'Timeline'))))}</strong></span>
+                <span>Board: <strong>{activeTab === 'document' ? 'Document Board' : (activeTab === 'code' ? 'Coding Board' : (activeTab === 'sandbox' ? 'Browser Sandbox' : (activeTab === 'notes' ? 'Smart Notes' : (activeTab === 'polls' ? 'Polls' : (activeTab === 'snippets' ? 'Snippets' : 'Timeline')))))}</strong></span>
                 <span className="status-divider">|</span>
                 <span>Members: <strong>{users.length || 1}</strong></span>
               </div>
