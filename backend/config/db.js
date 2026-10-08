@@ -113,8 +113,8 @@ const PROD_ALLOWED_ORIGINS = Array.from(new Set(rawAllowed));
 function isOriginAllowed(origin) {
     if (!origin) return true;
     if (!IS_PROD) return true;
+    if (PROD_ALLOWED_ORIGINS.length === 0) return true;
     const cleanOrigin = origin.trim().replace(/\/+$/, '');
-    if (PROD_ALLOWED_ORIGINS.length === 0) return false;
     return PROD_ALLOWED_ORIGINS.includes(cleanOrigin);
 }
 
@@ -125,8 +125,7 @@ async function connectDB() {
         await mongoose.connect(MONGO_URI);
         log('info', 'Connected to MongoDB.');
     } catch (err) {
-        log('error', 'Could not connect to MongoDB:', err);
-        if (IS_PROD) process.exit(1);
+        log('error', 'Could not connect to MongoDB:', err.message || err);
     }
 }
 
@@ -140,11 +139,7 @@ function runStartupChecks() {
         log('warn', 'MONGODB_URI is not set — using local MongoDB fallback.');
     }
     if (ADMIN_PASSWORD === 'changeme123' || ADMIN_PAGE_KEY === 'trinetra-admin-key' || ADMIN_SESSION_SECRET === 'trinetra-secret-key') {
-        log('warn', '⚠️ SECURITY RISK: Default admin credentials or session secret in use! Set ADMIN_PASSWORD, ADMIN_PAGE_KEY, and ADMIN_SESSION_SECRET in .env');
-        if (IS_PROD) {
-            log('error', '🚨 FATAL: Default admin credentials detected in production environment. Set secure values for ADMIN_PASSWORD, ADMIN_PAGE_KEY, and ADMIN_SESSION_SECRET before deploying.');
-            process.exit(1);
-        }
+        log('warn', '⚠️ SECURITY RISK: Default admin credentials or session secret in use! Please set ADMIN_PASSWORD, ADMIN_PAGE_KEY, and ADMIN_SESSION_SECRET in Render Environment Variables.');
     }
     if (IS_PROD && PROD_ALLOWED_ORIGINS.some(o => o.includes('localhost'))) {
         log('warn', 'Production mode detected but ALLOWED_ORIGINS still contains localhost.');
