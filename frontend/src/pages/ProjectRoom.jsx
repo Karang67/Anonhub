@@ -3453,48 +3453,100 @@ console.log("Stats result:", calculateStats(scores));
       {/* Top Project Subheader Bar */}
       {!isHeaderCollapsed && (
         <div className="project-top-subbar">
-        <div className="subbar-left">
-          {/* Project Title & Nickname Edit */}
-          <div className="project-title-group">
-            <span className="project-label">Project: <strong className="project-name-highlight">{projectName}</strong></span>
-            <button
-              className="subbar-icon-btn"
-              onClick={() => { setNicknameInput(username); setIsEditingNickname(true); }}
-              title="Change Nickname"
-            >
-              <Pencil size={13} />
-            </button>
-          </div>
+          <div className="subbar-meta-bar">
+            <div className="subbar-left">
+              {/* Project Title & Nickname Edit */}
+              <div className="project-title-group">
+                <span className="project-label">Project: <strong className="project-name-highlight">{projectName}</strong></span>
+                <button
+                  className="subbar-icon-btn"
+                  onClick={() => { setNicknameInput(username); setIsEditingNickname(true); }}
+                  title="Change Nickname"
+                >
+                  <Pencil size={13} />
+                </button>
+              </div>
 
-          {/* User Badge (Avatar Circle + Name + Role Pill) */}
-          {isEditingNickname ? (
-            <div className="subbar-nickname-edit">
-              <input
-                className="subbar-nick-input"
-                value={nicknameInput}
-                onChange={e => setNicknameInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleSaveNickname();
-                  else if (e.key === 'Escape') setIsEditingNickname(false);
-                }}
-                autoFocus
-                maxLength={40}
-                placeholder="New nickname..."
-              />
-              <button className="nick-action-btn check" onClick={handleSaveNickname} title="Save"><Check size={12} /></button>
-              <button className="nick-action-btn cancel" onClick={() => setIsEditingNickname(false)} title="Cancel"><X size={12} /></button>
-            </div>
-          ) : (
-            <div className="subbar-user-badge">
-              <span className="user-avatar-circle">{(username || 'K').charAt(0).toUpperCase()}</span>
-              <span className="user-name-text">{username || 'Anonymous'}</span>
-              {isOwner ? (
-                <span className="user-role-pill owner">Owner</span>
+              {/* User Badge (Avatar Circle + Name + Role Pill) */}
+              {isEditingNickname ? (
+                <div className="subbar-nickname-edit">
+                  <input
+                    className="subbar-nick-input"
+                    value={nicknameInput}
+                    onChange={e => setNicknameInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleSaveNickname();
+                      else if (e.key === 'Escape') setIsEditingNickname(false);
+                    }}
+                    autoFocus
+                    maxLength={40}
+                    placeholder="New nickname..."
+                  />
+                  <button className="nick-action-btn check" onClick={handleSaveNickname} title="Save"><Check size={12} /></button>
+                  <button className="nick-action-btn cancel" onClick={() => setIsEditingNickname(false)} title="Cancel"><X size={12} /></button>
+                </div>
               ) : (
-                <span className="user-role-pill member">Member</span>
+                <div className="subbar-user-badge">
+                  <span className="user-avatar-circle">{(username || 'K').charAt(0).toUpperCase()}</span>
+                  <span className="user-name-text">{username || 'Anonymous'}</span>
+                  {isOwner ? (
+                    <span className="user-role-pill owner">Owner</span>
+                  ) : (
+                    <span className="user-role-pill member">Member</span>
+                  )}
+                </div>
               )}
             </div>
-          )}
+
+            <div className="subbar-right">
+              {isOwner ? (
+                <button
+                  onClick={() => setShowPermissionsModal(true)}
+                  className="subbar-tool-btn"
+                  title="Room Permissions Settings"
+                >
+                  <Shield size={14} /> <span>Permissions</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setShowOwnerKeyModal(true); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
+                  className="subbar-tool-btn"
+                  title="Claim room owner status with access key"
+                >
+                  <Key size={14} /> <span>Owner Key</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowShareModal(true)}
+                className="subbar-tool-btn"
+                title="Share invite link"
+              >
+                <Link size={14} /> <span>Share</span>
+              </button>
+
+              <button
+                onClick={handleLeaveRoom}
+                className="subbar-leave-btn"
+                title="Leave this project workspace"
+              >
+                <LogOut size={14} /> <span>Leave</span>
+              </button>
+
+              {/* Arrow Button to Hide Header */}
+              <button
+                onClick={() => {
+                  setIsHeaderCollapsed(true);
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
+                }}
+                className="subbar-collapse-toggle-btn"
+                title="Hide Header (Focus Mode)"
+                aria-label="Hide Header"
+              >
+                <ChevronUp size={16} />
+              </button>
+            </div>
+          </div>
 
           {/* Nav Tabs */}
           <div className="subbar-nav-tabs">
@@ -3513,7 +3565,10 @@ console.log("Stats result:", calculateStats(scores));
             {isFeatureVisible('project.document_board') && (
               <button
                 className={`subbar-tab ${activeTab === 'document' ? 'active' : ''}`}
-                onClick={() => setActiveTab('document')}
+                onClick={() => {
+                  setActiveTab('document');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
               >
                 <FileText size={15} />
                 <span>Document Board</span>
@@ -3546,7 +3601,10 @@ console.log("Stats result:", calculateStats(scores));
             {isFeatureVisible('project.smart_notes') && (
               <button
                 className={`subbar-tab ${activeTab === 'notes' ? 'active' : ''}`}
-                onClick={() => setActiveTab('notes')}
+                onClick={() => {
+                  setActiveTab('notes');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
               >
                 <FileText size={15} />
                 <span>Smart Notes</span>
@@ -3555,7 +3613,10 @@ console.log("Stats result:", calculateStats(scores));
             {isFeatureVisible('project.polls') && (
               <button
                 className={`subbar-tab ${activeTab === 'polls' ? 'active' : ''}`}
-                onClick={() => setActiveTab('polls')}
+                onClick={() => {
+                  setActiveTab('polls');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
               >
                 <BarChart3 size={15} />
                 <span>Polls</span>
@@ -3564,7 +3625,10 @@ console.log("Stats result:", calculateStats(scores));
             {isFeatureVisible('project.snippets') && (
               <button
                 className={`subbar-tab ${activeTab === 'snippets' ? 'active' : ''}`}
-                onClick={() => setActiveTab('snippets')}
+                onClick={() => {
+                  setActiveTab('snippets');
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+                }}
               >
                 <Save size={15} />
                 <span>Snippets</span>
@@ -3572,63 +3636,16 @@ console.log("Stats result:", calculateStats(scores));
             )}
             <button
               className={`subbar-tab ${activeTab === 'timeline' ? 'active' : ''}`}
-              onClick={() => setActiveTab('timeline')}
+              onClick={() => {
+                setActiveTab('timeline');
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+              }}
             >
               <Clock size={15} />
               <span>Timeline</span>
             </button>
           </div>
         </div>
-
-        <div className="subbar-right">
-          {isOwner ? (
-            <button
-              onClick={() => setShowPermissionsModal(true)}
-              className="subbar-tool-btn"
-              title="Room Permissions Settings"
-            >
-              <Shield size={14} /> <span>Permissions</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => { setShowOwnerKeyModal(true); setOwnerKeyError(''); setOwnerKeySuccess(''); }}
-              className="subbar-tool-btn"
-              title="Claim room owner status with access key"
-            >
-              <Key size={14} /> <span>Owner Key</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowShareModal(true)}
-            className="subbar-tool-btn"
-            title="Share invite link"
-          >
-            <Link size={14} /> <span>Share</span>
-          </button>
-
-          <button
-            onClick={handleLeaveRoom}
-            className="subbar-leave-btn"
-            title="Leave this project workspace"
-          >
-            <LogOut size={14} /> <span>Leave Workspace</span>
-          </button>
-
-          {/* Arrow Button to Hide Header */}
-          <button
-            onClick={() => {
-              setIsHeaderCollapsed(true);
-              setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
-            }}
-            className="subbar-collapse-toggle-btn"
-            title="Hide Header (Focus Mode)"
-            aria-label="Hide Header"
-          >
-            <ChevronUp size={16} />
-          </button>
-        </div>
-      </div>
       )}
 
       {/* Floating Expand Arrow Pill when Header is Hidden */}
@@ -3754,14 +3771,21 @@ console.log("Stats result:", calculateStats(scores));
                 value={docContent}
                 onEditorChange={handleDocChange}
                 init={{
-                  height: 600,
+                  height: '100%',
+                  min_height: 380,
                   menubar: false,
                   plugins: [
                     'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
                     'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
                     'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount', 'emoticons'
                   ],
+                  toolbar_mode: 'sliding',
                   toolbar: 'undo redo | blocks | bold italic backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | removeformat | table emoticons code fullscreen | uploadimage uploadfile',
+                  mobile: {
+                    menubar: false,
+                    toolbar_mode: 'sliding',
+                    toolbar: 'undo redo | blocks | bold italic underline forecolor | bullist numlist | link uploadfile'
+                  },
                   skin: theme === 'dark' ? 'oxide-dark' : 'oxide',
                   content_css: theme === 'dark' ? 'dark' : 'default',
                   branding: false,
@@ -4535,7 +4559,7 @@ console.log("Stats result:", calculateStats(scores));
                           lineHeight: editorLineHeight,
                           wordWrap: editorWordWrap,
                           tabSize: editorTabSize,
-                          minimap: { enabled: editorMinimap },
+                          minimap: { enabled: typeof window !== 'undefined' && window.innerWidth > 768 ? editorMinimap : false },
                           lineNumbers: editorLineNumbers ? 'on' : 'off',
                           roundedSelection: true,
                           scrollBeyondLastLine: false,

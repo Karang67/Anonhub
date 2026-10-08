@@ -14,15 +14,21 @@
    ───────────────────────────────────────────────────────────── */
 .project-top-subbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
   background: var(--card-background, #ffffff);
   border-bottom: 1px solid var(--border-color, #e2e8f0);
   padding: 8px 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   z-index: 40;
-  flex-wrap: wrap;
+}
+
+.subbar-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
 }
 
 .subbar-left {
@@ -134,9 +140,16 @@
 .subbar-nav-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
   padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.subbar-nav-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .subbar-tab {
@@ -2444,23 +2457,46 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
     height: 120px;
   }
 
-  /* ── Scroll behaviour ── */
+  /* ── Scroll & Panes behaviour ── */
   .workspace-panes {
-    min-height: 300px;
-    overflow: hidden;
+    height: 100% !important;
+    min-height: 0 !important;
+    flex: 1 1 0% !important;
+    overflow: hidden !important;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
+    position: relative !important;
   }
 
   .workspace-pane {
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
+    height: 100% !important;
+    min-height: 0 !important;
+    flex: 1 1 0% !important;
     max-height: none;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+  }
+
+  #pane-sketch.workspace-pane {
+    overflow: hidden !important;
+    touch-action: none !important;
+    overscroll-behavior: none !important;
+  }
+
+  #pane-document.workspace-pane {
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  #pane-code.workspace-pane {
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .project-page {
@@ -2523,7 +2559,8 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
   }
 
   .workspace-panes {
-    min-height: 260px;
+    min-height: 0 !important;
+    height: 100% !important;
   }
 
   .run-code-btn,
@@ -2596,7 +2633,8 @@ html[data-theme="dark"] .attachment-action-btn.delete-btn:hover {
   }
 
   .workspace-panes {
-    min-height: 220px;
+    min-height: 0 !important;
+    height: 100% !important;
   }
 
   .terminal-body {
@@ -6046,41 +6084,148 @@ html[data-theme="dark"] .snippets-filter-select {
   }
 }
 
+@media (max-width: 1024px) {
+  .project-power-workspace {
+    grid-template-columns: 1fr !important;
+    padding: 8px !important;
+    height: calc(100dvh - var(--header-height, 52px) - 86px) !important;
+    max-height: calc(100dvh - var(--header-height, 52px) - 86px) !important;
+    overflow: hidden !important;
+    gap: 8px !important;
+  }
+
+  .project-main-workspace-card {
+    height: 100% !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .workspace-panes {
+    height: 100% !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+
+  .workspace-pane.active {
+    height: 100% !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+  }
+
+  #pane-sketch.workspace-pane.active {
+    display: block !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+  }
+
+  #pane-document.workspace-pane.active {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #pane-document .tox-tinymce {
+    height: 100% !important;
+    flex: 1 1 0% !important;
+    min-height: 320px !important;
+  }
+
+  #pane-code.workspace-pane.active {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .workspace-status-footer {
+    display: none !important;
+  }
+}
+
 @media (max-width: 768px) {
   .project-top-subbar {
-    padding: 6px 12px !important;
-    gap: 8px !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    scrollbar-width: none !important;
+    padding: 6px 10px !important;
+    gap: 6px !important;
+    overflow: visible !important;
   }
-  .project-top-subbar::-webkit-scrollbar {
-    display: none !important;
+
+  .subbar-meta-bar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 8px !important;
   }
 
   .subbar-left {
-    flex-shrink: 0 !important;
-    gap: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
     flex-wrap: nowrap !important;
+    overflow: hidden !important;
+    flex: 1 !important;
+    min-width: 0 !important;
   }
 
   .project-title-group {
     font-size: 0.85rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .project-name-highlight {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: bottom;
   }
 
   .subbar-user-badge {
     padding: 2px 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .user-name-text {
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .subbar-nav-tabs {
-    flex-shrink: 0 !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 6px !important;
+    padding: 2px 0 3px 0 !important;
+    width: 100% !important;
     flex-wrap: nowrap !important;
+    scroll-snap-type: x proximity;
+  }
+
+  .subbar-nav-tabs::-webkit-scrollbar {
+    display: none !important;
   }
 
   .subbar-tab {
-    padding: 5px 9px !important;
+    padding: 6px 12px !important;
     font-size: 0.78rem !important;
+    flex-shrink: 0 !important;
+    border-radius: 8px !important;
+    min-height: 34px !important;
+    scroll-snap-align: start;
   }
 
   .subbar-right {
@@ -6096,27 +6241,17 @@ html[data-theme="dark"] .snippets-filter-select {
   .subbar-tool-btn,
   .subbar-leave-btn {
     padding: 6px 8px !important;
-    min-width: 32px;
-    justify-content: center;
+    min-width: 32px !important;
+    height: 32px !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
   }
 
-  .workspace-status-footer {
-    left: 8px !important;
-    right: 8px !important;
-    bottom: 8px !important;
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-  }
-
-  .status-pill-left {
-    padding: 4px 8px !important;
-    font-size: 0.7rem !important;
-    gap: 6px !important;
-  }
-
-  .btn-pro-badge {
-    padding: 4px 8px !important;
-    font-size: 0.7rem !important;
+  .floating-chat-toggle {
+    bottom: 20px !important;
+    right: 16px !important;
+    width: 46px !important;
+    height: 46px !important;
   }
 }
 

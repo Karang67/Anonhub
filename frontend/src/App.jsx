@@ -114,11 +114,12 @@ function AppContent() {
                      location.pathname === '/code' ||
                      location.pathname === '/code.html';
   const isCallRoom = location.pathname.startsWith('/call/') || location.pathname.startsWith('/call');
+  const isDedicatedRoom = isCallRoom || location.pathname.startsWith('/whiteboard');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: isCallRoom ? '#04050a' : undefined }}>
-      {/* Global Navigation Header (hidden on dedicated full-screen call room) */}
-      {!isCallRoom && <Navbar />}
+      {/* Global Navigation Header (hidden on dedicated full-screen rooms like call and whiteboard) */}
+      {!isDedicatedRoom && <Navbar />}
 
       {/* Main Workspace Frame */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>

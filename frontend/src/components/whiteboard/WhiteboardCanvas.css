@@ -3,6 +3,8 @@
   height: 100%;
   position: relative;
   background-color: var(--bg-primary, #0f172a);
+  touch-action: none !important;
+  overscroll-behavior: none !important;
 }
 
 .whiteboard-status-badge {
@@ -30,10 +32,10 @@
 
 @media (max-width: 600px) {
   .whiteboard-status-badge {
-    top: auto;
-    bottom: 74px;
-    left: 12px;
-    right: auto;
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    left: auto;
     padding: 3px 8px;
     font-size: 10px;
   }
@@ -92,3 +94,22 @@ a[href*="tldraw.dev"],
   pointer-events: none !important;
   visibility: hidden !important;
 }
+
+/* ── Mobile Touch & Text Tool Enhancements ── */
+.tl-text-shape__wrapper textarea,
+.tl-text-shape textarea,
+.tl-container textarea,
+.tl-container input,
+.tlui-popover input,
+.tlui-dialog input {
+  touch-action: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
+}
+
+/* Bottom Toolbar Docking Safe Area */
+.tlui-layout__bottom {
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 6px)) !important;
+}
+

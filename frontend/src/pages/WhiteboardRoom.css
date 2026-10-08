@@ -421,30 +421,68 @@
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
+  .whiteboard-page-wrapper {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+
   .wb-header-center {
     display: none;
   }
+
   .wb-room-tag {
+    display: inline-flex !important;
+    padding: 3px 6px !important;
+    font-size: 11px !important;
+    max-width: 120px !important;
+  }
+
+  .wb-room-label {
     display: none;
   }
+
+  .wb-room-name {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .wb-btn-label {
     display: none !important;
   }
+
   .whiteboard-header {
     padding: 0 10px;
     height: 48px;
     min-height: 48px;
+    flex-shrink: 0;
   }
+
   .wb-action-btn {
     padding: 6px !important;
     font-size: 0.75rem !important;
     height: 34px !important;
+    width: 34px !important;
     min-width: 34px !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     border-radius: 8px !important;
+    flex-shrink: 0;
   }
+
+  .whiteboard-main-viewport {
+    height: calc(100dvh - 48px) !important;
+    min-height: 0 !important;
+    flex: 1 1 0% !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+  }
+
   .wb-modal-card {
     width: 94vw !important;
     max-width: 440px !important;
@@ -454,17 +492,21 @@
 @media (max-width: 600px) {
   .whiteboard-page-wrapper {
     height: 100dvh;
+    max-height: 100dvh;
     overflow: hidden;
+    touch-action: none;
+    overscroll-behavior: none;
   }
 
   .whiteboard-header {
     padding: 0 8px;
-    height: 46px;
-    min-height: 46px;
+    height: 48px;
+    min-height: 48px;
+    flex-shrink: 0;
   }
 
   .wb-brand-name {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
   }
 
   .wb-badge-pill {
@@ -477,7 +519,7 @@
   }
 
   .wb-action-btn {
-    padding: 5px !important;
+    padding: 4px !important;
     width: 32px !important;
     height: 32px !important;
     min-width: 32px !important;
@@ -489,14 +531,21 @@
   }
 
   .whiteboard-main-viewport {
-    height: calc(100dvh - 46px);
-    overflow: hidden;
+    height: calc(100dvh - 48px) !important;
+    min-height: 0 !important;
+    flex: 1 1 0% !important;
+    overflow: hidden !important;
+    touch-action: none !important;
   }
 }
 
 @media (max-width: 400px) {
   .wb-brand-name {
-    font-size: 0.88rem;
+    font-size: 0.85rem;
+  }
+
+  .wb-room-tag {
+    display: none !important;
   }
 
   .wb-action-btn {
